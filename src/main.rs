@@ -1,7 +1,11 @@
+use std::{collections::HashMap, sync::Arc};
+
 use components::equations;
+use desmoxide::{graph::expressions::{EquationType, ExpressionType, Expressions}, lang::{ast::{Ident, AST}, compiler::ir::{IRSegment, IRType}, expression_provider::ExpressionId}};
 use graph::GraphRenderer;
 use iced::{
     widget::{
+        canvas::Cache,
         row,
         text_input::{focus, Id},
         Canvas,
@@ -14,7 +18,6 @@ use wasm_bindgen::JsValue;
 mod components;
 mod graph;
 mod latex;
-mod parser;
 
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
@@ -40,15 +43,27 @@ pub enum Message {
     Scaled(f32, Option<Vector>),
     EquationChanged(usize, String),
     EquationAdded(String),
-    EquationMessage(equations::Message),
+    ShowError(Option<usize>),
+    FocusGraph(usize),
 }
 
-struct Somsed {
-    graph_renderer: GraphRenderer,
-    equations: equations::Equations,
+
+
+struct Somsed<'a> {
+    graph_caches: HashMap<ExpressionId, Cache>,
+    expressions: Expressions<'a>,
+
+
+    shown_error: Option<usize>,
+
+    sidebar_width: f32,
+
+    scale: f32,
+    mid: Vector,
+    resolution: u32,
 }
 
-impl Application for Somsed {
+impl<'a> Application for Somsed<'a> {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = iced::Theme;
@@ -57,22 +72,37 @@ impl Application for Somsed {
     fn new(_: Self::Flags) -> (Self, Command<Message>) {
         (
             Self {
-                graph_renderer: GraphRenderer::new(100.0, Vector { x: 0.0, y: 0.0 }, 1000),
-                equations: Default::default(),
+                scale: 100.0,
+                mid: Vector { x: 0.0, y: 0.0 },
+                resolution: 1000,
+                sidebar_width: 300.0,
+
+                graph_caches: HashMap::new(),
+                expressions: Expressions::new(HashMap::new()),
+
+                shown_error: None,
             },
             Command::none(),
         )
     }
 
     fn view(&self) -> iced::Element<'_, Self::Message> {
-        let content = Canvas::new(&self.graph_renderer)
+        let content = Canvas::new(&GraphRenderer::new(&, graph_caches, scale, mid, resolution))
             .width(Length::Fill)
             .height(Length::Fill);
 
-        row![self.equations.view(), content]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        row![
+            equations::view(
+                &self.expressions,
+                &self.parsed_expr,
+                &mut self.shown_error,
+                self.sidebar_width
+            ),
+            content
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 
     fn update(&mut self, message: Self::Message) -> iced::Command<Message> {
@@ -101,7 +131,11 @@ impl Application for Somsed {
                 self.graph_renderer.clear_caches();
                 iced::Command::none()
             }
-            Message::EquationMessage(m) => self.equations.update(m),
+            Message::ShowError(i) => {
+                self.shown_error = i;
+                Command::none()
+            }
+            Message::FocusGraph(i) => focus(Id::new(format!("equation_{}", i))),
         }
     }
 

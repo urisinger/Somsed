@@ -1,5 +1,17 @@
 use std::{collections::HashMap, fmt::Debug};
 
+use anyhow::{anyhow, Result};
+use desmoxide::{
+    graph::expressions::Expressions,
+    lang::{
+        ast::AST,
+        compiler::{
+            backends::interpreter::{eval, EvalError},
+            ir::IRSegment,
+            value::{IRValue, Number},
+        },
+    },
+};
 use iced::{
     event::Status,
     mouse::{self, Cursor},
@@ -7,94 +19,62 @@ use iced::{
     Color, Point, Theme, Vector,
 };
 
-use crate::{
-    latex::SubscriptSymbol,
-    parser::{tokenizer::tokenize, EvalError, Node},
-    Message,
-};
+use crate::{latex::SubscriptSymbol, Message};
 
-pub struct Graph {
-    pub eq: Node,
-    graph_cache: Cache,
+pub struct GraphRenderer<'a> {
+    scale: f32,
+    mid: Vector,
+    resolution: u32,
+
+    exprs: &'a Expressions,
+    graph_caches: &'a Vec<Cache>,
 }
 
-pub struct GraphRenderer {
-    pub scale: f32,
-    pub mid: Vector,
-    pub resolution: u32,
-
-    pub graphs: Vec<Option<Graph>>,
-
-    symbols: HashMap<SubscriptSymbol, f32>,
-}
-
-impl GraphRenderer {
-    pub fn new(scale: f32, mid: Vector, resolution: u32) -> Self {
+impl<'a> GraphRenderer<'a> {
+    pub fn new(
+        exprs: &'a Vec<Result<IRSegment>>,
+        graph_caches: &'a Vec<Cache>,
+        scale: f32,
+        mid: Vector,
+        resolution: u32,
+    ) -> Self {
         Self {
+            exprs,
+            graph_caches,
             scale,
             mid,
             resolution,
-            graphs: Vec::new(),
-            symbols: HashMap::new(),
-        }
-    }
-
-    pub fn add_equation(&mut self, eq: &str) -> Result<(), String> {
-        self.graphs.push(None);
-        self.set_equation(self.graphs.len() - 1, eq)
-    }
-
-    pub fn set_equation(&mut self, i: usize, eq: &str) -> Result<(), String> {
-        let tokens = tokenize(eq.chars()).map_err(|e| e.to_string())?;
-        let parsed_eq = Node::parse(tokens).map_err(|e| e.to_string())?;
-        self.graphs[i] = Some(Graph::new(parsed_eq));
-        Ok(())
-    }
-
-    pub fn clear_caches(&self) {
-        for graph in &self.graphs {
-            graph.as_ref().map(|g| g.clear_cache());
         }
     }
 }
 
-impl Graph {
-    pub fn new(eq: Node) -> Self {
-        Self {
-            eq,
-            graph_cache: Cache::new(),
-        }
-    }
-    pub fn points(
-        &self,
-        range: f32,
-        mid: Vector,
-        resolution: u32,
-        vars: &mut HashMap<SubscriptSymbol, f32>,
-    ) -> Result<Vec<Option<Vector>>, String> {
-        let mut points = Vec::new();
+pub fn points(
+    ast: &IRSegment,
+    range: f32,
+    mid: Vector,
+    resolution: u32,
+) -> Result<Vec<Option<Vector>>> {
+    let mut points = Vec::new();
 
-        let min = mid.x - range / 2.0;
-        let dx = range / resolution as f32;
-        vars.insert(SubscriptSymbol::from('x'), 0.0);
+    let min = mid.x - range / 2.0;
+    let dx = range / resolution as f32;
+    let mut args = Vec::new();
+    args.push(IRValue::Number(0.0.into()));
 
-        for i in 0..resolution {
-            let x = i as f32 * dx + min;
-            vars.get_mut(&SubscriptSymbol::from('x')).map(|v| *v = x);
-            let point = match self.eq.evaluate(vars) {
-                Ok(y) => Some(Vector { x, y }),
-                Err(EvalError::DivideByZeroError) => None,
-                Err(EvalError::UnknownSymbol(s)) => return Err(format!("unknown symbol: {:?}", s)),
-            };
-            points.push(point);
-        }
-
-        Ok(points)
+    for i in 0..resolution {
+        let x = i as f64 * dx as f64 + min as f64;
+        args[0] = IRValue::Number(x.into());
+        let point = Some(Vector {
+            x: x as f32,
+            y: match eval(ast, args.clone())? {
+                IRValue::Number(Number::Double(y)) => y,
+                _ => return Err(anyhow!("unexpected return")),
+            } as f32,
+        });
+        points.push(point);
     }
 
-    pub fn clear_cache(&self) {
-        self.graph_cache.clear()
-    }
+    Ok(points)
 }
 
 pub enum GraphState {
@@ -108,7 +88,7 @@ impl Default for GraphState {
     }
 }
 
-impl Program<Message> for GraphRenderer {
+impl<'a> Program<Message> for GraphRenderer<'a> {
     type State = GraphState;
     fn draw(
         &self,
@@ -118,46 +98,46 @@ impl Program<Message> for GraphRenderer {
         bounds: iced::Rectangle,
         cursor: Cursor,
     ) -> Vec<Geometry> {
-        let graphs = self.graphs.iter().filter_map(|g| g.as_ref()).map(|graph| {
-            graph.graph_cache.draw(renderer, bounds.size(), |frame| {
-                let mut symbols = self.symbols.clone();
-
-                match graph.points(
-                    bounds.width / self.scale,
-                    self.mid,
-                    self.resolution,
-                    &mut symbols,
-                ) {
-                    Ok(points) => {
-                        for i in 0..points.len() - 1 {
-                            match (points[i], points[i + 1]) {
-                                (Some(point), Some(next_point)) => {
-                                    frame.stroke(
-                                        &Path::line(
-                                            Point {
-                                                x: (point.x - self.mid.x) * self.scale as f32
-                                                    + bounds.width / 2.0,
-                                                y: (point.y - self.mid.y) * self.scale as f32
-                                                    + bounds.height / 2.0,
-                                            },
-                                            Point {
-                                                x: (next_point.x - self.mid.x) * self.scale as f32
-                                                    + bounds.width / 2.0,
-                                                y: (next_point.y - self.mid.y) * self.scale as f32
-                                                    + bounds.height / 2.0,
-                                            },
-                                        ),
-                                        Stroke::default().with_width(4.0),
-                                    );
+        let graphs = self
+            .exprs
+            .iter()
+            .enumerate()
+            .filter_map(|(i, g)| g.as_ref().ok().map(|g| (i, g)))
+            .map(|(i, graph)| {
+                self.graph_caches[i].draw(renderer, bounds.size(), |frame| {
+                    match points(&graph, bounds.width / self.scale, self.mid, self.resolution) {
+                        Ok(points) => {
+                            for i in 0..points.len() - 1 {
+                                match (points[i], points[i + 1]) {
+                                    (Some(point), Some(next_point)) => {
+                                        frame.stroke(
+                                            &Path::line(
+                                                Point {
+                                                    x: (point.x - self.mid.x) * self.scale as f32
+                                                        + bounds.width / 2.0,
+                                                    y: (point.y - self.mid.y) * self.scale as f32
+                                                        + bounds.height / 2.0,
+                                                },
+                                                Point {
+                                                    x: (next_point.x - self.mid.x)
+                                                        * self.scale as f32
+                                                        + bounds.width / 2.0,
+                                                    y: (next_point.y - self.mid.y)
+                                                        * self.scale as f32
+                                                        + bounds.height / 2.0,
+                                                },
+                                            ),
+                                            Stroke::default().with_width(4.0),
+                                        );
+                                    }
+                                    _ => (),
                                 }
-                                _ => (),
                             }
                         }
+                        Err(e) => eprintln!("{}", e),
                     }
-                    Err(e) => eprintln!("{}", e),
-                }
-            })
-        });
+                })
+            });
 
         let graphs = graphs.collect();
 
