@@ -88,7 +88,7 @@ impl Application for Somsed {
         (
             Self {
                 errors: HashMap::new(),
-                compiled_eqs: expressions.compile_all(),
+                compiled_eqs: CompiledEquations::default(),
                 scale: 100.0,
                 mid: Vector { x: 0.0, y: 0.0 },
                 resolution: 1000,
@@ -139,14 +139,19 @@ impl Application for Somsed {
                 self.expressions.set_equation(i, s);
                 self.errors = self.expressions.parse_all();
 
+                self.compiled_eqs = self.expressions.compile_all(&mut self.errors);
                 iced::Command::none()
             }
             Message::EquationAdded(s) => {
                 self.expressions.add_equation(s);
 
                 self.graph_caches
-                    .insert(ExpressionId(self.expressions.max_id), Cache::new());
-                iced::Command::none()
+                    .insert(ExpressionId(self.expressions.max_id - 1), Cache::new());
+
+                self.errors = self.expressions.parse_all();
+
+                self.compiled_eqs = self.expressions.compile_all(&mut self.errors);
+                focus(Id::new(format!("equation_{}", self.expressions.max_id - 1)))
             }
             Message::Scaled(scale, mid) => {
                 self.scale = scale;

@@ -1,3 +1,6 @@
 [submodule "trie-rs"]
 	path = trie-rs
 	url = git@github.com:urisinger/trie-rs.git
+[submodule "desmoxide"]
+	path = desmoxide
+	url = git@github.com:The-Minecraft-Scientist/desmoxide.git

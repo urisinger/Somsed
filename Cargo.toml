@@ -1,3 +1,6 @@
+[workspace]
+members = ["desmoxide"]
+
 [package]
 name = "somsed"
 version = "0.1.0"
@@ -10,7 +13,7 @@ wasm-bindgen = "0.2.92"
 reqwest = { version = "0.12.5", features = ["json"] }
 console_error_panic_hook = "0.1.7"
 strum = {version = "0.26", features = ["derive"]}
-desmoxide = {git = "https://github.com/The-Minecraft-Scientist/desmoxide.git"}
+desmoxide = {path = "./desmoxide/"}
 anyhow = "1.0"
 
 [dependencies.web-sys]

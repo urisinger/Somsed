@@ -62,6 +62,7 @@ pub fn points(
     let mut args = Vec::new();
     args.push(IRValue::Number(0.0.into()));
 
+    args.push(IRValue::Number(0.0.into()));
     for i in 0..resolution {
         let x = i as f64 * dx as f64 + min as f64;
         args[0] = IRValue::Number(x.into());
@@ -72,7 +73,6 @@ pub fn points(
                 _ => return Err(anyhow!("unexpected number")),
             } as f32,
         });
-        println!("{:?}", point);
         points.push(point);
     }
 
@@ -100,56 +100,48 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
         bounds: iced::Rectangle,
         cursor: Cursor,
     ) -> Vec<Geometry> {
-        let graphs = self
-            .exprs
-            .compiled_equations
-            .iter()
-            .filter_map(|(i, g)| {
-                g.as_ref()
-                    .map_err(|err| println!("err {}", err))
-                    .ok()
-                    .map(|g| (i, g))
-            })
-            .map(|(i, graph)| {
-                self.graph_caches[i].draw(renderer, bounds.size(), |frame| {
-                    match points(
-                        graph.0.as_ref().unwrap(),
-                        bounds.width / self.scale,
-                        self.mid,
-                        self.resolution,
-                    ) {
-                        Ok(points) => {
-                            for i in 0..points.len() - 1 {
-                                match (points[i], points[i + 1]) {
-                                    (Some(point), Some(next_point)) => {
-                                        frame.stroke(
-                                            &Path::line(
-                                                Point {
-                                                    x: (point.x - self.mid.x) * self.scale as f32
-                                                        + bounds.width / 2.0,
-                                                    y: (point.y - self.mid.y) * self.scale as f32
-                                                        + bounds.height / 2.0,
-                                                },
-                                                Point {
-                                                    x: (next_point.x - self.mid.x)
-                                                        * self.scale as f32
-                                                        + bounds.width / 2.0,
-                                                    y: (next_point.y - self.mid.y)
-                                                        * self.scale as f32
-                                                        + bounds.height / 2.0,
-                                                },
-                                            ),
-                                            Stroke::default().with_width(4.0),
-                                        );
-                                    }
-                                    _ => (),
+        let graphs = self.exprs.compiled_equations.iter().map(|(i, graph)| {
+            self.graph_caches[i].draw(renderer, bounds.size(), |frame| {
+                match points(
+                    graph.0.as_ref().unwrap(),
+                    bounds.width / self.scale,
+                    self.mid,
+                    self.resolution,
+                ) {
+                    Ok(points) => {
+                        for i in 0..points.len() - 1 {
+                            match (points[i], points[i + 1]) {
+                                (Some(point), Some(next_point)) => {
+                                    frame.stroke(
+                                        &Path::line(
+                                            Point {
+                                                x: (point.x - self.mid.x) * self.scale as f32
+                                                    + bounds.width / 2.0,
+                                                y: (point.y - self.mid.y) * self.scale as f32
+                                                    + bounds.height / 2.0,
+                                            },
+                                            Point {
+                                                x: (next_point.x - self.mid.x) * self.scale as f32
+                                                    + bounds.width / 2.0,
+                                                y: (next_point.y - self.mid.y) * self.scale as f32
+                                                    + bounds.height / 2.0,
+                                            },
+                                        ),
+                                        Stroke::default().with_width(4.0),
+                                    );
                                 }
+                                _ => (),
                             }
                         }
-                        Err(e) => eprintln!("{}", e),
                     }
-                })
-            });
+                    Err(e) => eprintln!(
+                        "error in eval, {} code is: {:?}",
+                        e,
+                        graph.0.as_ref().unwrap()
+                    ),
+                }
+            })
+        });
 
         let graphs = graphs.collect();
 
