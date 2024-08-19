@@ -1,7 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use components::equations;
-use desmoxide::{graph::expressions::{EquationType, ExpressionType, Expressions}, lang::{ast::{Ident, AST}, compiler::ir::{IRSegment, IRType}, expression_provider::ExpressionId}};
+use desmoxide::{
+    graph::expressions::{CompiledEquations, EquationType, ExpressionType, Expressions},
+    lang::{
+        ast::{Ident, AST},
+        compiler::ir::{IRSegment, IRType},
+        expression_provider::ExpressionId,
+    },
+};
 use graph::GraphRenderer;
 use iced::{
     widget::{
@@ -17,7 +24,6 @@ use wasm_bindgen::JsValue;
 
 mod components;
 mod graph;
-mod latex;
 
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
@@ -41,20 +47,20 @@ fn main() {
 pub enum Message {
     Moved(Vector),
     Scaled(f32, Option<Vector>),
-    EquationChanged(usize, String),
+    EquationChanged(ExpressionId, String),
     EquationAdded(String),
-    ShowError(Option<usize>),
+    ShowError(Option<ExpressionId>),
     FocusGraph(usize),
 }
 
-
-
-struct Somsed<'a> {
+struct Somsed {
     graph_caches: HashMap<ExpressionId, Cache>,
-    expressions: Expressions<'a>,
+    errors: HashMap<ExpressionId, String>,
+    expressions: Expressions,
 
+    compiled_eqs: CompiledEquations,
 
-    shown_error: Option<usize>,
+    shown_error: Option<ExpressionId>,
 
     sidebar_width: f32,
 
@@ -63,22 +69,33 @@ struct Somsed<'a> {
     resolution: u32,
 }
 
-impl<'a> Application for Somsed<'a> {
+impl Somsed {
+    pub fn clear_caches(&mut self) {
+        for (_, v) in &mut self.graph_caches {
+            v.clear();
+        }
+    }
+}
+
+impl Application for Somsed {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = iced::Theme;
     type Flags = ();
 
     fn new(_: Self::Flags) -> (Self, Command<Message>) {
+        let expressions = Expressions::new(HashMap::new());
         (
             Self {
+                errors: HashMap::new(),
+                compiled_eqs: expressions.compile_all(),
                 scale: 100.0,
                 mid: Vector { x: 0.0, y: 0.0 },
                 resolution: 1000,
                 sidebar_width: 300.0,
 
                 graph_caches: HashMap::new(),
-                expressions: Expressions::new(HashMap::new()),
+                expressions,
 
                 shown_error: None,
             },
@@ -87,15 +104,21 @@ impl<'a> Application for Somsed<'a> {
     }
 
     fn view(&self) -> iced::Element<'_, Self::Message> {
-        let content = Canvas::new(&GraphRenderer::new(&, graph_caches, scale, mid, resolution))
-            .width(Length::Fill)
-            .height(Length::Fill);
+        let content = Canvas::new(GraphRenderer::new(
+            &self.compiled_eqs,
+            &self.graph_caches,
+            self.scale,
+            self.mid,
+            self.resolution,
+        ))
+        .width(Length::Fill)
+        .height(Length::Fill);
 
         row![
             equations::view(
-                &self.expressions,
-                &self.parsed_expr,
-                &mut self.shown_error,
+                &self.expressions.storage,
+                &self.errors,
+                &self.shown_error,
                 self.sidebar_width
             ),
             content
@@ -108,27 +131,29 @@ impl<'a> Application for Somsed<'a> {
     fn update(&mut self, message: Self::Message) -> iced::Command<Message> {
         match message {
             Message::Moved(p) => {
-                self.graph_renderer.mid = self.graph_renderer.mid + p;
-                self.graph_renderer.clear_caches();
+                self.mid = self.mid + p;
+                self.clear_caches();
                 iced::Command::none()
             }
             Message::EquationChanged(i, s) => {
-                let err = self.graph_renderer.set_equation(i, &s).err();
-                self.equations.set_equation(i, s, err);
+                self.expressions.set_equation(i, s);
+                self.errors = self.expressions.parse_all();
 
                 iced::Command::none()
             }
             Message::EquationAdded(s) => {
-                let err = self.graph_renderer.add_equation(&s).err();
-                self.equations.add_equation(s, err);
+                self.expressions.add_equation(s);
+
+                self.graph_caches
+                    .insert(ExpressionId(self.expressions.max_id), Cache::new());
                 iced::Command::none()
             }
             Message::Scaled(scale, mid) => {
-                self.graph_renderer.scale = scale;
+                self.scale = scale;
                 if let Some(mid) = mid {
-                    self.graph_renderer.mid = mid;
+                    self.mid = mid;
                 }
-                self.graph_renderer.clear_caches();
+                self.clear_caches();
                 iced::Command::none()
             }
             Message::ShowError(i) => {

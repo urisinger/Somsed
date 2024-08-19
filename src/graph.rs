@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use anyhow::{anyhow, Result};
 use desmoxide::{
-    graph::expressions::Expressions,
+    graph::expressions::{CompiledEquations, Expressions},
     lang::{
         ast::AST,
         compiler::{
@@ -10,6 +10,7 @@ use desmoxide::{
             ir::IRSegment,
             value::{IRValue, Number},
         },
+        expression_provider::ExpressionId,
     },
 };
 use iced::{
@@ -19,21 +20,21 @@ use iced::{
     Color, Point, Theme, Vector,
 };
 
-use crate::{latex::SubscriptSymbol, Message};
+use crate::Message;
 
 pub struct GraphRenderer<'a> {
     scale: f32,
     mid: Vector,
     resolution: u32,
 
-    exprs: &'a Expressions,
-    graph_caches: &'a Vec<Cache>,
+    exprs: &'a CompiledEquations,
+    graph_caches: &'a HashMap<ExpressionId, Cache>,
 }
 
 impl<'a> GraphRenderer<'a> {
     pub fn new(
-        exprs: &'a Vec<Result<IRSegment>>,
-        graph_caches: &'a Vec<Cache>,
+        exprs: &'a CompiledEquations,
+        graph_caches: &'a HashMap<ExpressionId, Cache>,
         scale: f32,
         mid: Vector,
         resolution: u32,
@@ -68,9 +69,10 @@ pub fn points(
             x: x as f32,
             y: match eval(ast, args.clone())? {
                 IRValue::Number(Number::Double(y)) => y,
-                _ => return Err(anyhow!("unexpected return")),
+                _ => return Err(anyhow!("unexpected number")),
             } as f32,
         });
+        println!("{:?}", point);
         points.push(point);
     }
 
@@ -100,12 +102,22 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
     ) -> Vec<Geometry> {
         let graphs = self
             .exprs
+            .compiled_equations
             .iter()
-            .enumerate()
-            .filter_map(|(i, g)| g.as_ref().ok().map(|g| (i, g)))
+            .filter_map(|(i, g)| {
+                g.as_ref()
+                    .map_err(|err| println!("err {}", err))
+                    .ok()
+                    .map(|g| (i, g))
+            })
             .map(|(i, graph)| {
                 self.graph_caches[i].draw(renderer, bounds.size(), |frame| {
-                    match points(&graph, bounds.width / self.scale, self.mid, self.resolution) {
+                    match points(
+                        graph.0.as_ref().unwrap(),
+                        bounds.width / self.scale,
+                        self.mid,
+                        self.resolution,
+                    ) {
                         Ok(points) => {
                             for i in 0..points.len() - 1 {
                                 match (points[i], points[i + 1]) {

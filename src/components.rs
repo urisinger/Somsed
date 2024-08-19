@@ -1,7 +1,7 @@
 pub mod equations {
     use std::collections::HashMap;
 
-    use desmoxide::lang::ast::AST;
+    use desmoxide::lang::{ast::AST, expression_provider::ExpressionId};
     use iced::{
         widget::{
             button, column, container, mouse_area, row, scrollable, text,
@@ -14,25 +14,17 @@ pub mod equations {
 
     use crate::Message;
 
-    pub struct Equations {
-        equations: Vec<String>,
-        errors: Vec<Option<String>>,
-        width: f32,
-        shown_error: Option<usize>,
-    }
-
-    pub fn view<'a, 'element>(
-        equations: &HashMap<String>,
-        parsed_equations: &HashMap<Result<AST, String>>,
-        shown_error: &mut Option<usize>,
+    pub fn view<'element>(
+        equations: &'element HashMap<ExpressionId, String>,
+        errors: &HashMap<ExpressionId, String>,
+        shown_error: &Option<ExpressionId>,
         width: f32,
     ) -> Element<'element, crate::Message> {
         let mut elements = equations
             .iter()
-            .enumerate()
             .map(|(i, equation)| {
                 let input = TextInput::new("", equation)
-                    .on_input(move |s| crate::Message::EquationChanged(i, s))
+                    .on_input(move |s| Message::EquationChanged(*i, s))
                     .size(20)
                     .padding(Padding {
                         top: 10.0,
@@ -41,7 +33,7 @@ pub mod equations {
                         left: 0.0,
                     })
                     .line_height(LineHeight::Absolute(30.0.into()))
-                    .id(Id::new(format!("equation_{i}")))
+                    .id(Id::new(format!("equation_{}", i.0)))
                     .width(Length::Fill);
 
                 let show_eq = mouse_area(
@@ -49,11 +41,11 @@ pub mod equations {
                         .width(Length::Fixed(35.0))
                         .height(Length::Fixed(50.0)),
                 )
-                .on_enter(Message::ShowError(Some(i)))
+                .on_enter(Message::ShowError(Some(*i)))
                 .on_exit(Message::ShowError(None));
 
                 let left: Element<crate::Message> = if let Some(i) = *shown_error {
-                    if let Err(err) = &parsed_equations[i] {
+                    if let Some(err) = &errors.get(&i) {
                         tooltip(
                             show_eq,
                             container(text(err).style(iced::theme::Text::Color(Color::WHITE)))
