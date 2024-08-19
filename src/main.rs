@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use components::equations;
+use components::sidebar;
 use desmoxide::{
     graph::expressions::{CompiledEquations, EquationType, ExpressionType, Expressions},
     lang::{
@@ -25,6 +25,8 @@ use wasm_bindgen::JsValue;
 mod components;
 mod graph;
 
+static DCG_FONT: &[u8; 45324] = include_bytes!("./dcg-icons-2024-08-02.ttf");
+
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
@@ -36,11 +38,13 @@ pub fn start() -> Result<(), JsValue> {
 }
 
 fn main() {
-    Somsed::run(Settings {
+    let mut settings = Settings {
         antialiasing: true,
         ..Default::default()
-    })
-    .unwrap();
+    };
+
+    settings.fonts.push(DCG_FONT.into());
+    Somsed::run(settings).unwrap();
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +119,7 @@ impl Application for Somsed {
         .height(Length::Fill);
 
         row![
-            equations::view(
+            sidebar::view(
                 &self.expressions.storage,
                 &self.errors,
                 &self.shown_error,
@@ -140,6 +144,8 @@ impl Application for Somsed {
                 self.errors = self.expressions.parse_all();
 
                 self.compiled_eqs = self.expressions.compile_all(&mut self.errors);
+
+                self.graph_caches[&i].clear();
                 iced::Command::none()
             }
             Message::EquationAdded(s) => {
@@ -147,9 +153,7 @@ impl Application for Somsed {
 
                 self.graph_caches
                     .insert(ExpressionId(self.expressions.max_id - 1), Cache::new());
-
                 self.errors = self.expressions.parse_all();
-
                 self.compiled_eqs = self.expressions.compile_all(&mut self.errors);
                 focus(Id::new(format!("equation_{}", self.expressions.max_id - 1)))
             }
