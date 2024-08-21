@@ -30,11 +30,14 @@ static DCG_FONT: &[u8; 45324] = include_bytes!("./dcg-icons-2024-08-02.ttf");
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    Somsed::run(Settings {
+
+    let mut settings = Settings {
         antialiasing: true,
         ..Default::default()
-    })
-    .map_err(|e| JsValue::from_str(&e.to_string()))
+    };
+
+    settings.fonts.push(DCG_FONT.into());
+    Somsed::run(settings).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 fn main() {

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use desmoxide::lang::{ast::AST, expression_provider::ExpressionId};
 use iced::{
-    font,
+    alignment, font, mouse,
     widget::{
         button, column, container, mouse_area, row, scrollable, text,
         text::LineHeight,
@@ -37,13 +37,26 @@ pub fn view<'element>(
                 .id(Id::new(format!("equation_{}", i.0)))
                 .width(Length::Fill);
 
-            let show_err = mouse_area(
-                container(icons::error())
-                    .width(Length::Fixed(35.0))
-                    .height(Length::Fixed(50.0)),
-            )
-            .on_enter(Message::ShowError(Some(*i)))
-            .on_exit(Message::ShowError(None));
+            let show_err = if errors.get(i).is_some() {
+                mouse_area(
+                    container(icons::error().size(20))
+                        .align_x(alignment::Horizontal::Center)
+                        .align_y(alignment::Vertical::Center)
+                        .width(Length::Fixed(35.0))
+                        .height(Length::Fixed(50.0)),
+                )
+                .on_enter(Message::ShowError(Some(*i)))
+                .interaction(mouse::Interaction::Grab)
+                .on_exit(Message::ShowError(None))
+            } else {
+                mouse_area(
+                    container("")
+                        .width(Length::Fixed(35.0))
+                        .height(Length::Fixed(50.0)),
+                )
+                .on_enter(Message::ShowError(Some(*i)))
+                .on_exit(Message::ShowError(None))
+            };
 
             let left: Element<crate::Message> = if let Some(i) = *shown_error {
                 if let Some(err) = &errors.get(&i) {

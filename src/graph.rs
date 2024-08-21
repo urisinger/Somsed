@@ -17,7 +17,7 @@ use iced::{
     event::Status,
     mouse::{self, Cursor},
     widget::canvas::{event, Cache, Event, Frame, Geometry, Path, Program, Stroke},
-    Color, Point, Theme, Vector,
+    Color, Point, Size, Theme, Vector,
 };
 
 use crate::Message;
@@ -69,9 +69,10 @@ pub fn points(
         let point = Some(Vector {
             x: x as f32,
             y: match eval(ast, args.clone())? {
-                IRValue::Number(Number::Double(y)) => y,
-                _ => return Err(anyhow!("unexpected number")),
-            } as f32,
+                IRValue::Number(y) => y.into(),
+
+                _ => return Err(anyhow!("expected number return")),
+            },
         });
         points.push(point);
     }
@@ -88,6 +89,17 @@ impl Default for GraphState {
     fn default() -> Self {
         Self::None
     }
+}
+
+pub fn translate_point(point: Vector, mid: Vector, scale: f32, size: Size) -> Point {
+    Point {
+        x: translate_coord(point.x, mid.x, scale, size.width),
+        y: translate_coord(point.y, mid.y, -scale, size.height),
+    }
+}
+
+pub fn translate_coord(point: f32, mid: f32, scale: f32, size: f32) -> f32 {
+    (point - mid) * scale + size / 2.0
 }
 
 impl<'a> Program<Message> for GraphRenderer<'a> {
@@ -112,22 +124,31 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
                         for i in 0..points.len() - 1 {
                             match (points[i], points[i + 1]) {
                                 (Some(point), Some(next_point)) => {
+                                    let point =
+                                        translate_point(point, self.mid, self.scale, bounds.size());
+
+                                    let next_point = translate_point(
+                                        next_point,
+                                        self.mid,
+                                        self.scale,
+                                        bounds.size(),
+                                    );
+
+                                    if point.y > frame.size().height * 2.0
+                                        || point.y < -frame.size().height
+                                        || point.y.is_nan()
+                                        || !point.y.is_finite()
+                                        || !next_point.y.is_finite()
+                                        || !next_point.y.is_finite()
+                                    {
+                                        continue;
+                                    }
+
                                     frame.stroke(
-                                        &Path::line(
-                                            Point {
-                                                x: (point.x - self.mid.x) * self.scale as f32
-                                                    + bounds.width / 2.0,
-                                                y: (point.y - self.mid.y) * self.scale as f32
-                                                    + bounds.height / 2.0,
-                                            },
-                                            Point {
-                                                x: (next_point.x - self.mid.x) * self.scale as f32
-                                                    + bounds.width / 2.0,
-                                                y: (next_point.y - self.mid.y) * self.scale as f32
-                                                    + bounds.height / 2.0,
-                                            },
-                                        ),
-                                        Stroke::default().with_width(4.0),
+                                        &Path::line(point, next_point),
+                                        Stroke::default()
+                                            .with_width(3.0)
+                                            .with_color(Color::from_rgb8(45, 112, 179)),
                                     );
                                 }
                                 _ => (),
@@ -143,8 +164,37 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
             })
         });
 
-        let graphs = graphs.collect();
+        let mut graphs: Vec<_> = graphs.collect();
 
+        let mut grid = Frame::new(renderer, bounds.size());
+        grid.stroke(
+            &Path::line(
+                Point::new(
+                    translate_coord(0.0, self.mid.x, self.scale, bounds.size().width),
+                    bounds.size().height,
+                ),
+                Point::new(
+                    translate_coord(0.0, self.mid.x, self.scale, bounds.size().width),
+                    0.0,
+                ),
+            ),
+            Stroke::default().with_width(3.0),
+        );
+
+        grid.stroke(
+            &Path::line(
+                Point::new(
+                    bounds.size().width,
+                    translate_coord(0.0, self.mid.y, -self.scale, bounds.size().height),
+                ),
+                Point::new(
+                    0.0,
+                    translate_coord(0.0, self.mid.y, -self.scale, bounds.size().height),
+                ),
+            ),
+            Stroke::default().with_width(3.0),
+        );
+        graphs.push(grid.into_geometry());
         graphs
     }
 
@@ -177,7 +227,8 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
                 }
                 mouse::Event::CursorMoved { .. } => match *state {
                     GraphState::Moving { start } => {
-                        let diff = (start - cursor_position) * (1.0 / self.scale);
+                        let mut diff = (start - cursor_position) * (1.0 / self.scale);
+                        diff.y *= -1.0;
                         *state = GraphState::Moving {
                             start: cursor_position,
                         };
@@ -188,20 +239,21 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
                 mouse::Event::WheelScrolled { delta } => match delta {
                     mouse::ScrollDelta::Lines { y, .. } | mouse::ScrollDelta::Pixels { y, .. } => {
                         let scaling = self.scale * (1.0 + y / 30.0);
-                        let mid =
-                            if let Some(cursor_to_center) = cursor.position_from(bounds.center()) {
-                                let factor = scaling - self.scale;
+                        let mid = if let Some(cursor_to_center) =
+                            cursor.position_from(bounds.center())
+                        {
+                            let factor = scaling - self.scale;
 
-                                Some(
-                                    self.mid
-                                        - Vector::new(
-                                            cursor_to_center.x * factor / (self.scale * self.scale),
-                                            cursor_to_center.y * factor / (self.scale * self.scale),
-                                        ),
-                                )
-                            } else {
-                                None
-                            };
+                            Some(
+                                self.mid
+                                    - Vector::new(
+                                        -cursor_to_center.x * factor / (self.scale * self.scale),
+                                        cursor_to_center.y * factor / (self.scale * self.scale),
+                                    ),
+                            )
+                        } else {
+                            None
+                        };
                         (event::Status::Captured, Some(Message::Scaled(scaling, mid)))
                     }
                 },
