@@ -1,16 +1,9 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::collections::HashMap;
 
 use anyhow::{anyhow, Result};
 use desmoxide::{
-    graph::expressions::{CompiledEquation, CompiledEquations, ExpressionId, Expressions},
-    lang::{
-        ast::AST,
-        compiler::{
-            backends::interpreter::{eval, EvalError},
-            ir::IRSegment,
-            value::{IRValue, Number},
-        },
-    },
+    graph::expressions::{CompiledEquation, CompiledEquations, ExpressionId},
+    lang::compiler::{backends::interpreter::eval, ir::IRSegment, value::IRValue},
 };
 use iced::{
     event::Status,
@@ -105,11 +98,11 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
     type State = GraphState;
     fn draw(
         &self,
-        state: &Self::State,
+        _: &Self::State,
         renderer: &iced::Renderer,
-        theme: &Theme,
+        _: &Theme,
         bounds: iced::Rectangle,
-        cursor: Cursor,
+        _: Cursor,
     ) -> Vec<Geometry> {
         let graphs = self.exprs.compiled_equations.iter().map(|(i, graph)| {
             self.graph_caches[i].draw(renderer, bounds.size(), |frame| match graph {
@@ -157,7 +150,7 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
                         Err(e) => eprintln!("error in eval, {}", e),
                     }
                 }
-                CompiledEquation::Explicit { lhs, rhs, comp } => (),
+                CompiledEquation::Explicit { .. } => (),
             })
         });
 

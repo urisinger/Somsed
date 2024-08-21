@@ -1,15 +1,9 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use components::sidebar;
-use desmoxide::{
-    graph::expressions::{
-        CompiledEquations, EquationType, ExpressionId, ExpressionType, Expressions,
-    },
-    lang::{
-        ast::{Ident, AST},
-        compiler::ir::{IRSegment, IRType},
-    },
-};
+use desmoxide::graph::expressions::{
+        CompiledEquations, ExpressionId, Expressions,
+    };
 use graph::GraphRenderer;
 use iced::{
     widget::{

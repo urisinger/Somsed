@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
-use desmoxide::{graph::expressions::ExpressionId, lang::ast::AST};
+use desmoxide::graph::expressions::ExpressionId;
 use iced::{
-    alignment, font, mouse,
+    alignment, mouse,
     widget::{
         button, column, container, mouse_area, row, scrollable, text,
         text::LineHeight,
-        text_input::{focus, Id},
+        text_input::Id,
         tooltip, TextInput,
     },
-    Color, Command, Element, Font, Length, Padding,
+    Color, Element, Length, Padding,
 };
 
 use super::icons;
