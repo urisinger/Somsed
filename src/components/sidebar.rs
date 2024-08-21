@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use desmoxide::lang::{ast::AST, expression_provider::ExpressionId};
+use desmoxide::{graph::expressions::ExpressionId, lang::ast::AST};
 use iced::{
     alignment, font, mouse,
     widget::{

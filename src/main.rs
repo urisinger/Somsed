@@ -2,11 +2,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use components::sidebar;
 use desmoxide::{
-    graph::expressions::{CompiledEquations, EquationType, ExpressionType, Expressions},
+    graph::expressions::{
+        CompiledEquations, EquationType, ExpressionId, ExpressionType, Expressions,
+    },
     lang::{
         ast::{Ident, AST},
         compiler::ir::{IRSegment, IRType},
-        expression_provider::ExpressionId,
     },
 };
 use graph::GraphRenderer;

@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use anyhow::{anyhow, Result};
 use desmoxide::{
-    graph::expressions::{CompiledEquations, Expressions},
+    graph::expressions::{CompiledEquation, CompiledEquations, ExpressionId, Expressions},
     lang::{
         ast::AST,
         compiler::{
@@ -10,7 +10,6 @@ use desmoxide::{
             ir::IRSegment,
             value::{IRValue, Number},
         },
-        expression_provider::ExpressionId,
     },
 };
 use iced::{
@@ -113,54 +112,52 @@ impl<'a> Program<Message> for GraphRenderer<'a> {
         cursor: Cursor,
     ) -> Vec<Geometry> {
         let graphs = self.exprs.compiled_equations.iter().map(|(i, graph)| {
-            self.graph_caches[i].draw(renderer, bounds.size(), |frame| {
-                match points(
-                    graph.0.as_ref().unwrap(),
-                    bounds.width / self.scale,
-                    self.mid,
-                    self.resolution,
-                ) {
-                    Ok(points) => {
-                        for i in 0..points.len() - 1 {
-                            match (points[i], points[i + 1]) {
-                                (Some(point), Some(next_point)) => {
-                                    let point =
-                                        translate_point(point, self.mid, self.scale, bounds.size());
+            self.graph_caches[i].draw(renderer, bounds.size(), |frame| match graph {
+                CompiledEquation::Implicit { lhs } => {
+                    match points(lhs, bounds.width / self.scale, self.mid, self.resolution) {
+                        Ok(points) => {
+                            for i in 0..points.len() - 1 {
+                                match (points[i], points[i + 1]) {
+                                    (Some(point), Some(next_point)) => {
+                                        let point = translate_point(
+                                            point,
+                                            self.mid,
+                                            self.scale,
+                                            bounds.size(),
+                                        );
 
-                                    let next_point = translate_point(
-                                        next_point,
-                                        self.mid,
-                                        self.scale,
-                                        bounds.size(),
-                                    );
+                                        let next_point = translate_point(
+                                            next_point,
+                                            self.mid,
+                                            self.scale,
+                                            bounds.size(),
+                                        );
 
-                                    if point.y > frame.size().height * 2.0
-                                        || point.y < -frame.size().height
-                                        || point.y.is_nan()
-                                        || !point.y.is_finite()
-                                        || !next_point.y.is_finite()
-                                        || !next_point.y.is_finite()
-                                    {
-                                        continue;
+                                        if point.y > frame.size().height * 2.0
+                                            || point.y < -frame.size().height
+                                            || point.y.is_nan()
+                                            || !point.y.is_finite()
+                                            || !next_point.y.is_finite()
+                                            || !next_point.y.is_finite()
+                                        {
+                                            continue;
+                                        }
+
+                                        frame.stroke(
+                                            &Path::line(point, next_point),
+                                            Stroke::default()
+                                                .with_width(3.0)
+                                                .with_color(Color::from_rgb8(45, 112, 179)),
+                                        );
                                     }
-
-                                    frame.stroke(
-                                        &Path::line(point, next_point),
-                                        Stroke::default()
-                                            .with_width(3.0)
-                                            .with_color(Color::from_rgb8(45, 112, 179)),
-                                    );
+                                    _ => (),
                                 }
-                                _ => (),
                             }
                         }
+                        Err(e) => eprintln!("error in eval, {}", e),
                     }
-                    Err(e) => eprintln!(
-                        "error in eval, {} code is: {:?}",
-                        e,
-                        graph.0.as_ref().unwrap()
-                    ),
                 }
+                CompiledEquation::Explicit { lhs, rhs, comp } => (),
             })
         });
 
