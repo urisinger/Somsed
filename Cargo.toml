@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = {version = "0.12.1", features = ["canvas", "webgl"]}
+iced = {git = "https://github.com/iced-rs/iced/", branch = "master", features = ["canvas", "webgl"]}
 thiserror = "1.0.63"
 wasm-bindgen = "0.2.92"
 reqwest = { version = "0.12.5", features = ["json"] }
@@ -17,7 +17,7 @@ desmoxide = {path = "./desmoxide/"}
 anyhow = "1.0"
 
 [dependencies.web-sys]
-version = "0.3.67"
+version = "0.3.69"
 features = [
     "Document",
     "Window",

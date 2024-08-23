@@ -4,10 +4,8 @@ use desmoxide::graph::expressions::ExpressionId;
 use iced::{
     alignment, mouse,
     widget::{
-        button, column, container, mouse_area, row, scrollable, text,
-        text::LineHeight,
-        text_input::Id,
-        tooltip, TextInput,
+        button, column, container, mouse_area, row, scrollable, text, text::LineHeight,
+        text_input::Id, tooltip, TextInput,
     },
     Color, Element, Length, Padding,
 };
@@ -17,7 +15,7 @@ use crate::Message;
 
 pub fn view<'element>(
     equations: &'element HashMap<ExpressionId, String>,
-    errors: &HashMap<ExpressionId, String>,
+    errors: &'element HashMap<ExpressionId, String>,
     shown_error: &Option<ExpressionId>,
     width: f32,
 ) -> Element<'element, crate::Message> {
@@ -59,14 +57,16 @@ pub fn view<'element>(
             };
 
             let left: Element<crate::Message> = if let Some(i) = *shown_error {
-                if let Some(err) = &errors.get(&i) {
+                if let Some(err) = errors.get(&i) {
                     tooltip(
                         show_err,
-                        container(text(err).style(iced::theme::Text::Color(Color::WHITE)))
-                            .padding(5)
-                            .width(Length::Shrink)
-                            .height(Length::Shrink)
-                            .style(styles::floating_box()),
+                        container(text(err).style(|_| text::Style {
+                            color: Some(Color::WHITE),
+                        }))
+                        .padding(5)
+                        .width(Length::Shrink)
+                        .height(Length::Shrink)
+                        .style(styles::floating_box),
                         tooltip::Position::Bottom,
                     )
                     .into()
@@ -81,13 +81,16 @@ pub fn view<'element>(
         .collect::<Vec<Element<crate::Message>>>();
 
     elements.push(
-        button(container("").style(styles::add_eq()).width(Length::Fill))
-            .style(iced::theme::Button::Text)
-            .on_press(crate::Message::EquationAdded("".to_string()))
-            .width(Length::Fill)
-            .padding(0)
-            .height(Length::Fixed(50.0))
-            .into(),
+        mouse_area(
+            container("")
+                .style(styles::add_eq)
+                .width(Length::Fill)
+                .padding(0)
+                .height(Length::Fixed(50.0)),
+        )
+        .on_press(crate::Message::EquationAdded("".to_string()))
+        .interaction(mouse::Interaction::Grab)
+        .into(),
     );
 
     let sidebar = scrollable(column(elements))
@@ -97,16 +100,16 @@ pub fn view<'element>(
     let view = container(sidebar)
         .width(Length::Fixed(width))
         .height(Length::Fill)
-        .style(styles::sidebar());
+        .style(styles::sidebar);
 
     view.into()
 }
 
 mod styles {
-    use iced::{widget::container, Border, Color, Shadow, Vector};
+    use iced::{widget::container, Border, Color, Shadow, Theme, Vector};
 
-    pub fn add_eq() -> container::Appearance {
-        container::Appearance {
+    pub fn add_eq(_: &Theme) -> container::Style {
+        container::Style {
             border: Border {
                 width: 1.0,
                 color: Color::from_rgb8(240, 240, 240),
@@ -116,8 +119,8 @@ mod styles {
         }
     }
 
-    pub fn floating_box() -> container::Appearance {
-        container::Appearance {
+    pub fn floating_box(_: &Theme) -> container::Style {
+        container::Style {
             background: Some(iced::Background::Color(Color::from_rgb8(102, 102, 102))),
             border: Border {
                 radius: 8.0.into(),
@@ -128,8 +131,8 @@ mod styles {
         }
     }
 
-    pub fn sidebar() -> container::Appearance {
-        container::Appearance {
+    pub fn sidebar(_: &Theme) -> container::Style {
+        container::Style {
             border: Border {
                 width: 1.0,
                 radius: 0.5.into(),
