@@ -1,22 +1,29 @@
 use std::collections::HashMap;
 
 use components::sidebar;
-use desmoxide::graph::expressions::{CompiledEquations, ExpressionId, Expressions};
+use desmoxide::{
+    graph::expressions::{CompiledEquations, ExpressionId, Expressions},
+    interop::{Expression, Graph},
+};
 use graph::GraphRenderer;
 use iced::{
     alignment::Horizontal,
     overlay,
     widget::{
+        self,
         canvas::Cache,
-        container,
+        container, mouse_area, opaque,
         pane_grid::{self, Axis, Content, Pane, ResizeEvent},
         row,
         text_input::{self, focus, Id},
-        Canvas, TextInput,
+        Canvas, Stack, TextInput,
     },
-    Application, Length, Settings, Task, Vector,
+    Application, Color, Length, Padding, Settings, Task, Vector,
 };
 
+use clap::Parser;
+
+use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
@@ -37,10 +44,11 @@ pub fn start() -> Result<(), JsValue> {
 }
 
 fn main() -> iced::Result {
+    let options = Options::parse();
     iced::application("Somsed", Somsed::update, Somsed::view)
         .font(DCG_FONT)
         .antialiasing(true)
-        .run()
+        .run_with(move || (Somsed::new(options), Task::none()))
 }
 
 #[derive(Debug, Clone)]
@@ -69,13 +77,17 @@ struct Somsed {
 
     shown_error: Option<ExpressionId>,
 
-    url: String,
-
-    sidebar_width: f32,
-
     scale: f32,
     mid: Vector,
     resolution: u32,
+}
+
+#[derive(Parser, Debug, Default)]
+#[command(version, about, long_about = None)]
+struct Options {
+    /// url of the program to fetch
+    #[arg(short, long)]
+    url: Option<String>,
 }
 
 impl Default for Somsed {
@@ -93,8 +105,6 @@ impl Default for Somsed {
             scale: 100.0,
             mid: Vector { x: 0.0, y: 0.0 },
             resolution: 1000,
-            sidebar_width: 300.0,
-            url: "".to_string(),
 
             graph_caches: HashMap::new(),
             expressions,
@@ -105,14 +115,61 @@ impl Default for Somsed {
 }
 
 impl Somsed {
-    pub fn clear_caches(&mut self) {
-        for (_, v) in &mut self.graph_caches {
-            v.clear();
+    async fn get_url(url: &str) -> Graph {
+        let res = reqwest::Client::new()
+            .get(url)
+            .header(ACCEPT, "application/json")
+            .send()
+            .await
+            .expect("Should send the request");
+
+        let text = res.text().await.expect("Should get response text");
+
+        serde_json::from_str(&text).expect("failed to deserealize graph")
+    }
+    fn new(options: Options) -> Self {
+        let mut graph_caches = HashMap::new();
+        let mut expressions = Expressions::new(if let Some(url) = options.url {
+            let graph = futures_lite::future::block_on(Self::get_url(&url));
+            graph
+                .exprs()
+                .into_iter()
+                .filter_map(|expr| match expr {
+                    Expression::Expression { id, latex, .. } => latex.as_ref().map(|latex| {
+                        graph_caches.insert(ExpressionId(*id), Cache::new());
+                        (ExpressionId(*id), latex.clone())
+                    }),
+                    _ => None,
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        });
+
+        expressions.parse_all();
+
+        let mut errors = HashMap::new();
+        let compiled_eqs = expressions.compile_all(&mut errors);
+
+        let (mut panes, pane) = pane_grid::State::new(PaneType::Sidebar);
+
+        panes.split(Axis::Vertical, pane, PaneType::Graph);
+
+        Self {
+            panes,
+            errors,
+            compiled_eqs,
+            scale: 100.0,
+            mid: Vector { x: 0.0, y: 0.0 },
+            resolution: 1000,
+
+            expressions,
+            graph_caches,
+
+            shown_error: None,
         }
     }
-}
 
-impl Somsed {
     fn view(&self) -> pane_grid::PaneGrid<'_, Message> {
         pane_grid::PaneGrid::new(&self.panes, move |_, id, _| match id {
             PaneType::Graph => Content::new(
@@ -130,12 +187,17 @@ impl Somsed {
                 &self.expressions.storage,
                 &self.errors,
                 &self.shown_error,
-                self.sidebar_width,
             )),
         })
         .on_resize(10, Message::Resized)
         .width(Length::Fill)
         .height(Length::Fill)
+    }
+
+    pub fn clear_caches(&mut self) {
+        for (_, v) in &mut self.graph_caches {
+            v.clear();
+        }
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -177,9 +239,5 @@ impl Somsed {
             }
         };
         Task::none()
-    }
-
-    fn title(&self) -> String {
-        "Somsed".to_string()
     }
 }

@@ -4,7 +4,7 @@ use desmoxide::graph::expressions::ExpressionId;
 use iced::{
     alignment, mouse,
     widget::{
-        button, column, container, mouse_area, row, scrollable, text, text::LineHeight,
+        column, container, mouse_area, row, scrollable, text, text::LineHeight, text_input,
         text_input::Id, tooltip, TextInput,
     },
     Color, Element, Length, Padding,
@@ -17,7 +17,6 @@ pub fn view<'element>(
     equations: &'element HashMap<ExpressionId, String>,
     errors: &'element HashMap<ExpressionId, String>,
     shown_error: &Option<ExpressionId>,
-    width: f32,
 ) -> Element<'element, crate::Message> {
     let mut elements = equations
         .iter()
@@ -88,7 +87,7 @@ pub fn view<'element>(
                 .padding(0)
                 .height(Length::Fixed(50.0)),
         )
-        .on_press(crate::Message::EquationAdded("".to_string()))
+        .on_press(Message::EquationAdded("".to_string()))
         .interaction(mouse::Interaction::Grab)
         .into(),
     );
@@ -98,7 +97,7 @@ pub fn view<'element>(
         .height(Length::Fill);
 
     let view = container(sidebar)
-        .width(Length::Fixed(width))
+        .width(Length::Fill)
         .height(Length::Fill)
         .style(styles::sidebar);
 
