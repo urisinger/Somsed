@@ -5,7 +5,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncOrDataId, Linkage, Module};
 use functions::{import_symbols, ImportedFunctions};
 
-use desmos_compiler::lang::codegen::ir::{IRModule, IRScalerType, IRType, SegmentKey};
+use desmos_compiler::lang::codegen::ir::{IRModule, IRScalarType, IRType, SegmentKey};
 
 pub mod builder;
 pub mod jit;
@@ -34,14 +34,14 @@ impl CraneliftBackend {
     pub fn make_sig(&self, key: &SegmentKey, ret_type: IRType) -> Signature {
         let mut signature = self.module.make_signature();
 
-        use IRScalerType::*;
+        use IRScalarType::*;
         use IRType::*;
         for ty in &key.args {
             match ty {
-                Scaler(Number) => {
+                Scalar(Number) => {
                     signature.params.push(AbiParam::new(types::F64));
                 }
-                Scaler(Point) => {
+                Scalar(Point) => {
                     signature.params.push(AbiParam::new(types::F64));
                     signature.params.push(AbiParam::new(types::F64));
                 }
@@ -53,10 +53,10 @@ impl CraneliftBackend {
         }
 
         match ret_type {
-            Scaler(Number) => {
+            Scalar(Number) => {
                 signature.returns.push(AbiParam::new(types::F64));
             }
-            Scaler(Point) => {
+            Scalar(Point) => {
                 signature.returns.push(AbiParam::new(types::F64));
                 signature.returns.push(AbiParam::new(types::F64));
             }
@@ -547,5 +547,8 @@ mod tests {
 
     test_for_loop_expression_output_list:
         "(a, b) \\operatorname{for} a = [1], b = [2]" => [(1.0, 2.0)], inputs = [];
+
+    test_for_loop_nested_list:
+        "(((a + b) \\operatorname{for} b=[1,2])[1])\\operatorname{for} a=[1,2]" => [2.0, 3.0], inputs = [];
     }
 }

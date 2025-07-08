@@ -5,35 +5,35 @@ use std::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IRType {
-    Scaler(IRScalerType),
-    List(IRScalerType),
+    Scalar(IRScalarType),
+    List(IRScalarType),
 }
 
 impl Display for IRType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            IRType::Scaler(inner) => write!(f, "{inner}"),
+            IRType::Scalar(inner) => write!(f, "{inner}"),
             IRType::List(inner) => write!(f, "Vec<{inner}>"),
         }
     }
 }
 
 impl IRType {
-    pub const NUMBER: IRType = IRType::Scaler(IRScalerType::Number);
-    pub const POINT: IRType = IRType::Scaler(IRScalerType::Point);
+    pub const NUMBER: IRType = IRType::Scalar(IRScalarType::Number);
+    pub const POINT: IRType = IRType::Scalar(IRScalarType::Point);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IRScalerType {
+pub enum IRScalarType {
     Number,
     Point,
 }
 
-impl Display for IRScalerType {
+impl Display for IRScalarType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            IRScalerType::Number => write!(f, "f64"),
-            IRScalerType::Point => write!(f, "Point"),
+            IRScalarType::Number => write!(f, "f64"),
+            IRScalarType::Point => write!(f, "Point"),
         }
     }
 }
@@ -93,7 +93,6 @@ pub enum Instruction {
 
     Map {
         lists: Vec<Vec<InstID>>,
-        args: Vec<InstID>,
         block_id: BlockID,
     },
 
@@ -114,12 +113,9 @@ pub enum Instruction {
         args: Vec<InstID>,
     },
 
-    FnArg {
-        index: usize,
-    },
-
     BlockArg {
         index: usize,
+        block: BlockID,
     },
 }
 

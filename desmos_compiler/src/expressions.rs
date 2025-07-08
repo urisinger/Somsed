@@ -1,10 +1,12 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use std::collections::HashMap;
 
-use crate::lang::parser::{
-    ast::ExpressionListEntry, ast_parser::parse_str_into_expression_list_entry,
-    latex_parser::parse_latex, latex_tree_flattener::Token,
+use parse::{
+    ast::ExpressionListEntry,
+    ast_parser::parse_expression_list_entry,
+    latex_parser::parse_latex,
+    latex_tree_flattener::{flatten, Token},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -54,7 +56,7 @@ impl Expressions {
     }
 
     fn parse_expr(&mut self, s: &str, k: ExpressionId) -> Result<ExpressionListEntry> {
-        let expr = parse_str_into_expression_list_entry(s, Token::EndOfInput)?;
+        let expr = parse_str_into_expression_list_entry(s)?;
         match &expr {
             ExpressionListEntry::Assignment { name, .. }
             | ExpressionListEntry::FunctionDeclaration { name, .. } => {
@@ -65,4 +67,10 @@ impl Expressions {
 
         Ok(expr)
     }
+}
+
+pub fn parse_str_into_expression_list_entry(s: &str) -> Result<ExpressionListEntry> {
+    let nodes = parse_latex(s).map_err(|e| anyhow!("{e:?}"))?;
+    let expression = parse_expression_list_entry(&nodes).map_err(|e| anyhow!("{e}"))?;
+    Ok(expression)
 }

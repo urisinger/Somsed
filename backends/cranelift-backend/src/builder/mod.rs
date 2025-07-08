@@ -1,34 +1,36 @@
+use std::ops::Deref;
+
 use anyhow::{anyhow, bail, Context};
 use cranelift::prelude::*;
 use cranelift_module::{FuncOrDataId, Module};
 
 use desmos_compiler::lang::codegen::ir::{
-    IRModule, IRScalerType, IRSegment, IRType, InstID, Instruction, SegmentKey,
+    IRModule, IRScalarType, IRSegment, IRType, InstID, Instruction, SegmentKey,
 };
 
 use crate::value::CraneliftList;
 
 use super::{
-    value::{value_count, CraneliftScaler, CraneliftValue},
+    value::{value_count, CraneliftScalar, CraneliftValue},
     CraneliftBackend,
 };
 
 mod list;
 
 macro_rules! match_value {
-    ($value:expr, Scaler::Number) => {
+    ($value:expr, Scalar::Number) => {
         match $value {
-            CraneliftValue::Scaler(CraneliftScaler::Number(v)) => Ok(v[0]),
+            CraneliftValue::Scalar(CraneliftScalar::Number(v)) => Ok(v[0]),
             other => Err(anyhow::anyhow!(
-                "expected Scaler::Number, found {:?}",
+                "expected Scalar::Number, found {:?}",
                 other
             )),
         }
     };
-    ($value:expr, Scaler::Point) => {
+    ($value:expr, Scalar::Point) => {
         match $value {
-            CraneliftValue::Scaler(CraneliftScaler::Point(v)) => Ok(v),
-            other => Err(anyhow::anyhow!("expected Scaler::Point, found {:?}", other)),
+            CraneliftValue::Scalar(CraneliftScalar::Point(v)) => Ok(v),
+            other => Err(anyhow::anyhow!("expected Scalar::Point, found {:?}", other)),
         }
     };
     ($value:expr, List::Number) => {
@@ -49,8 +51,6 @@ pub struct CraneliftBuilder<'a, 'ctx> {
     backend: &'ctx mut CraneliftBackend,
     ir_module: &'ctx IRModule,
     builder: FunctionBuilder<'a>,
-
-    // Vector to the start of each variable, the number of values is decided by the type
     args: Vec<CraneliftValue>,
 }
 
@@ -92,7 +92,7 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
             .entry_block()
             .with_context(|| anyhow!("entry for segment not found"))?;
 
-        let value = self.build_block(segment, entry.insts(), &[])?;
+        let value = self.build_block(segment, entry.insts(), &[&self.args.clone()])?;
 
         self.builder.ins().return_(value.as_struct());
 
@@ -105,24 +105,21 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
         &mut self,
         segment: &IRSegment,
         instructions: &[Instruction],
-        block_args: &[CraneliftValue],
+        block_args: &[&[CraneliftValue]],
     ) -> anyhow::Result<CraneliftValue> {
         let mut values = Vec::with_capacity(instructions.len());
 
         for instr in instructions {
-            let get_number = |id: &InstID| match_value!(values[id.inst()], Scaler::Number);
+            let get_number = |id: &InstID| match_value!(values[id.inst()], Scalar::Number);
             let value = match instr {
                 Instruction::Number(number) => {
                     CraneliftValue::number(self.builder.ins().f64const(*number))
                 }
 
-                Instruction::Point(x, y) => CraneliftValue::point([
-                    match_value!(values[x.inst()], Scaler::Number)?,
-                    match_value!(values[y.inst()], Scaler::Number)?,
-                ]),
+                Instruction::Point(x, y) => CraneliftValue::point([get_number(x)?, get_number(y)?]),
 
                 Instruction::Extract(val, index) => {
-                    CraneliftValue::number(match_value!(values[val.inst()], Scaler::Point)?[*index])
+                    CraneliftValue::number(match_value!(values[val.inst()], Scalar::Point)?[*index])
                 }
 
                 Instruction::Index(list_id, index_id) => {
@@ -137,10 +134,7 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                     };
 
                     // Get index
-                    let index_f64 = match &values[index_id.inst()] {
-                        CraneliftValue::Scaler(CraneliftScaler::Number([val])) => *val,
-                        _ => bail!("Expected numeric index"),
-                    };
+                    let index_f64 = get_number(index_id)?;
 
                     let index = self.builder.ins().fcvt_to_sint_sat(types::I64, index_f64);
                     let zero = self.builder.ins().iconst(types::I64, 0);
@@ -167,11 +161,11 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                     self.builder.seal_block(then_block);
                     let nan = self.builder.ins().f64const(f64::NAN);
                     match element_type {
-                        IRScalerType::Number => {
+                        IRScalarType::Number => {
                             _ = self.builder.append_block_param(merge_block, types::F64);
                             self.builder.ins().jump(merge_block, &[nan]);
                         }
-                        IRScalerType::Point => {
+                        IRScalarType::Point => {
                             let nan2 = self.builder.ins().f64const(f64::NAN);
                             _ = self.builder.append_block_param(merge_block, types::F64);
                             _ = self.builder.append_block_param(merge_block, types::F64);
@@ -186,14 +180,14 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                     let addr = self.builder.ins().iadd(base_ptr, offset);
 
                     match element_type {
-                        IRScalerType::Number => {
+                        IRScalarType::Number => {
                             let val = self
                                 .builder
                                 .ins()
                                 .load(types::F64, MemFlags::new(), addr, 0);
                             self.builder.ins().jump(merge_block, &[val]);
                         }
-                        IRScalerType::Point => {
+                        IRScalarType::Point => {
                             let x = self
                                 .builder
                                 .ins()
@@ -211,11 +205,11 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                     self.builder.seal_block(merge_block);
 
                     match element_type {
-                        IRScalerType::Number => {
+                        IRScalarType::Number => {
                             let result = self.builder.block_params(merge_block)[0];
                             CraneliftValue::number(result)
                         }
-                        IRScalerType::Point => {
+                        IRScalarType::Point => {
                             let params = self.builder.block_params(merge_block);
                             CraneliftValue::point([params[0], params[1]])
                         }
@@ -287,9 +281,10 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                         .with_context(|| anyhow!("function returns wrong type"))?
                 }
 
-                Instruction::FnArg { index } => self.args[*index],
-
-                Instruction::BlockArg { index } => *block_args.get(*index).unwrap(),
+                Instruction::BlockArg { index, block } => *block_args
+                    .get(*index)
+                    .and_then(|v| v.get(block.0))
+                    .with_context(|| anyhow!("block arg not found"))?,
 
                 Instruction::NumberList(insts) => {
                     CraneliftValue::List(CraneliftList::Number(self.build_new_list(
@@ -305,11 +300,7 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                     )?))
                 }
 
-                Instruction::Map {
-                    args,
-                    lists,
-                    block_id,
-                } => {
+                Instruction::Map { lists, block_id } => {
                     let inner_block = segment
                         .blocks()
                         .get(block_id.0)
@@ -330,26 +321,31 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                                         .collect()
                                 })
                                 .collect::<Result<Vec<_>, _>>()?,
-                            if let IRType::Scaler(t) = inner_block.ret() {
+                            if let IRType::Scalar(t) = inner_block.ret() {
                                 t
                             } else {
-                                bail!("expected block to return scaler")
+                                bail!("expected block to return scalar")
                             },
                             |codegen, list_args| {
+                                let inner_args = list_args
+                                    .iter()
+                                    .map(|v| CraneliftValue::Scalar(*v))
+                                    .collect::<Vec<_>>();
+
+                                let new_args = block_args
+                                    .iter()
+                                    .map(|v| *v)
+                                    .chain(std::iter::once(inner_args.as_slice()))
+                                    .collect::<Vec<&[CraneliftValue]>>();
                                 Ok(
                                     match codegen.build_block(
                                         segment,
                                         inner_block.insts(),
-                                        &list_args
-                                            .iter()
-                                            .cloned()
-                                            .map(CraneliftValue::Scaler)
-                                            .chain(args.iter().map(|inst| values[inst.inst()]))
-                                            .collect::<Vec<_>>(),
+                                        &new_args,
                                     )? {
-                                        CraneliftValue::Scaler(scaler) => scaler,
+                                        CraneliftValue::Scalar(scalar) => scalar,
                                         CraneliftValue::List(_) => {
-                                            bail!("expected scaler, not list")
+                                            bail!("expected scalar, not list")
                                         }
                                     },
                                 )

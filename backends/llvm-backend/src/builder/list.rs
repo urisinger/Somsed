@@ -6,7 +6,7 @@ use inkwell::{
 };
 
 use desmos_compiler::lang::generic_value::{
-    GenericList, GenericScalerValue, GenericValue, ListType, ValueType,
+    GenericList, GenericScalarValue, GenericValue, ListType, ValueType,
 };
 
 use crate::value::LLVMValue;

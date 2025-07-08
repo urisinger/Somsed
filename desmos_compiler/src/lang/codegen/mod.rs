@@ -7,14 +7,14 @@ mod unary_op;
 use std::collections::HashMap;
 
 use anyhow::{anyhow, bail, Context, Result};
-use ir::{BlockID, IRModule, IRScalerType, IRSegment, IRType, InstID, Instruction, SegmentKey};
+use ir::{BlockID, IRModule, IRScalarType, IRSegment, IRType, InstID, Instruction, SegmentKey};
 
 use crate::{
     expressions::{ExpressionId, Expressions},
-    lang::parser::ast::{BinaryOperator, Expression, ExpressionListEntry},
+    lang::codegen::ir_type::{expr_ty, used_functions},
 };
 
-use super::parser::ast::ChainedComparison;
+use parse::ast::{BinaryOperator, ChainedComparison, Expression, ExpressionListEntry};
 
 pub struct IRGen<'a> {
     exprs: &'a Expressions,
@@ -24,8 +24,6 @@ pub struct IRGen<'a> {
 struct Scope {
     types: HashMap<String, IRType>,
     args: HashMap<String, Instruction>,
-
-    max_block_arg: usize,
 }
 
 impl Scope {
@@ -68,13 +66,8 @@ impl<'a> IRGen<'a> {
             Number(value) => segment.push(
                 current_block,
                 Instruction::Number(*value),
-                IRType::Scaler(IRScalerType::Number),
+                IRType::Scalar(IRScalarType::Number),
             ),
-            Point(x, y) => {
-                let x = self.codegen_node(segment, scope, current_block, x)?;
-                let y = self.codegen_node(segment, scope, current_block, y)?;
-                segment.push(current_block, Instruction::Point(x, y), IRType::POINT)
-            }
             List(elements) => {
                 let insts = elements
                     .iter()
@@ -84,19 +77,19 @@ impl<'a> IRGen<'a> {
                 let first_ty = insts
                     .first()
                     .map(|id| id.ty())
-                    .unwrap_or(IRType::Scaler(IRScalerType::Number)); // default for empty list
+                    .unwrap_or(IRType::Scalar(IRScalarType::Number)); // default for empty list
 
                 match first_ty {
-                    IRType::Scaler(scaler_type) if insts.iter().all(|id| id.ty() == first_ty) => {
-                        let instr = match scaler_type {
-                            IRScalerType::Number => Instruction::NumberList(insts),
-                            IRScalerType::Point => Instruction::PointList(insts),
+                    IRType::Scalar(scalar_type) if insts.iter().all(|id| id.ty() == first_ty) => {
+                        let instr = match scalar_type {
+                            IRScalarType::Number => Instruction::NumberList(insts),
+                            IRScalarType::Point => Instruction::PointList(insts),
                         };
 
-                        segment.push(current_block, instr, IRType::List(scaler_type))
+                        segment.push(current_block, instr, IRType::List(scalar_type))
                     }
 
-                    IRType::Scaler(_) => {
+                    IRType::Scalar(_) => {
                         bail!("Inconsistent scalar types in list elements");
                     }
 
@@ -105,43 +98,7 @@ impl<'a> IRGen<'a> {
                     }
                 }
             }
-            /*Extract { val, index } => {
-                let val = self.codegen_node(segment, arg_types, current_block, val)?;
-
-                segment.push(
-                    current_block,
-                    Instruction::Extract(val, *index),
-                    IRType::Scaler(IRScalerType::Number),
-                )
-            }*/
-            /*Index { list, index } => {
-                let list = self.codegen_node(segment, arg_types, current_block, list)?;
-                let index = self.codegen_node(segment, arg_types, current_block, index)?;
-
-                let ty = match list.ty() {
-                    IRType::List(scaler) => IRType::Scaler(scaler),
-                    IRType::Scaler(_) => bail!("cannot index scaler"),
-                };
-
-                segment.push(current_block, Instruction::Index(list, index), ty)
-            }*/
             Identifier(ident) => self.get_var(segment, scope, current_block, ident)?,
-            /*Node::Lit(Literal::Point(x, y)) => {
-                let x = self.codegen_node(segment, arg_types, current_block, x)?;
-                let y = self.codegen_node(segment, arg_types, current_block, y)?;
-
-                let number_type = IRType::Scaler(IRScalerType::Number);
-
-                if x.ty() != number_type || y.ty() != number_type {
-                    bail!("Point must have number types only")
-                }
-
-                segment.push(
-                    current_block,
-                    Instruction::Point(x, y),
-                    IRType::Scaler(IRScalerType::Point),
-                )
-            }*/
             UnaryOperation { arg, operation } => {
                 let arg = self.codegen_node(segment, scope, current_block, arg)?;
 
@@ -175,7 +132,7 @@ impl<'a> IRGen<'a> {
                             .zip(args.iter().map(InstID::ty))
                             .collect();
 
-                        let ret = body.ty(self.exprs, &types)?;
+                        let ret = expr_ty(&body, self.exprs, &types)?;
                         segment.push(
                             current_block,
                             Instruction::Call {
@@ -210,42 +167,41 @@ impl<'a> IRGen<'a> {
             For { body, lists } => {
                 let mut new_scope = scope.clone();
 
-                let mut arg_index = scope.max_block_arg;
                 let mut grouped_lists: Vec<Vec<InstID>> = Vec::new();
 
-                for (name, expr) in lists {
+                let body_block = segment.create_block();
+
+                for (index, (name, expr)) in lists.iter().enumerate() {
                     let list = self.codegen_node(segment, scope, current_block, expr)?;
 
                     let ty = match list.ty() {
                         IRType::List(t) => t,
-                        IRType::Scaler(_) => bail!("expected List, found Scaler"),
+                        IRType::Scalar(_) => bail!("expected List, found Scalar"),
                     };
 
                     new_scope.insert(
                         name,
-                        Instruction::BlockArg { index: arg_index },
-                        IRType::Scaler(ty),
+                        Instruction::BlockArg {
+                            index,
+                            block: body_block,
+                        },
+                        IRType::Scalar(ty),
                     );
 
                     grouped_lists.push(vec![list]);
-                    arg_index += 1;
                 }
 
-                new_scope.max_block_arg = arg_index;
-
-                let body_block = segment.create_block();
                 let body_result = self.codegen_node(segment, &new_scope, body_block, body)?;
 
                 let result_type = match body_result.ty() {
-                    IRType::Scaler(t) => IRType::List(t),
-                    IRType::List(_) => bail!("expected Scaler, found List"),
+                    IRType::Scalar(t) => IRType::List(t),
+                    IRType::List(_) => bail!("expected Scalar, found List"),
                 };
 
                 segment.push(
                     current_block,
                     Instruction::Map {
                         lists: grouped_lists,
-                        args: vec![],
                         block_id: body_block,
                     },
                     result_type,
@@ -278,7 +234,7 @@ impl<'a> IRGen<'a> {
             .context(anyhow!("Cannot find expr {name}"))?
         {
             ExpressionListEntry::Assignment { value, .. } => {
-                self.codegen_node(segment, scope, current_block, value)
+                self.codegen_node(segment, scope, current_block, &value)
             }
             _ => bail!("Expr is not of type VarDef"),
         }
@@ -300,15 +256,17 @@ impl<'a> IRGen<'a> {
             .map(|(i, (k, ty))| {
                 (
                     (k.to_string(), *ty),
-                    (k.to_string(), Instruction::FnArg { index: i }),
+                    (
+                        k.to_string(),
+                        Instruction::BlockArg {
+                            index: i,
+                            block: entry_block,
+                        },
+                    ),
                 )
             })
             .collect();
-        let scope = Scope {
-            types,
-            args,
-            max_block_arg: 0,
-        };
+        let scope = Scope { types, args };
 
         _ = self.codegen_node(&mut segment, &scope, entry_block, node)?;
 
@@ -332,7 +290,7 @@ impl<'a> IRGen<'a> {
 
         pending.insert(key.clone(), (expr_id, node, parameters));
 
-        match node.used_functions(expressions, args) {
+        match used_functions(node, expressions, args) {
             Ok(used_fns) => {
                 for (fn_name, fn_args) in used_fns {
                     if let Some(ExpressionListEntry::FunctionDeclaration {
@@ -350,9 +308,9 @@ impl<'a> IRGen<'a> {
                             errors,
                             pending,
                             expr_id,
-                            body,
+                            &body,
                             fn_key,
-                            parameters,
+                            &parameters,
                             &types,
                         );
                     }
@@ -416,7 +374,7 @@ impl<'a> IRGen<'a> {
                         &mut errors,
                         &mut pending,
                         *id,
-                        lhs,
+                        &lhs,
                         key,
                         &explicit_args,
                         &types,
@@ -430,7 +388,7 @@ impl<'a> IRGen<'a> {
                         &mut errors,
                         &mut pending,
                         *id,
-                        value,
+                        &value,
                         key,
                         &constant_args,
                         &HashMap::new(),

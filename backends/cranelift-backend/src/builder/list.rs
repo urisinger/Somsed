@@ -1,17 +1,17 @@
 use anyhow::{anyhow, bail, Context, Result};
 use cranelift::{codegen::ir::StackSlot, prelude::*};
 use cranelift_module::Module;
-use desmos_compiler::lang::codegen::ir::{IRScalerType, IRType};
+use desmos_compiler::lang::codegen::ir::{IRScalarType, IRType};
 
-use crate::value::{CraneliftList, CraneliftScaler, CraneliftValue};
+use crate::value::{CraneliftList, CraneliftScalar, CraneliftValue};
 
 use super::CraneliftBuilder;
 
 impl CraneliftBuilder<'_, '_> {
     pub fn get_element_size(ty: IRType) -> Result<usize> {
         match ty {
-            IRType::Scaler(IRScalerType::Number) => Ok(8),
-            IRType::Scaler(IRScalerType::Point) => Ok(16),
+            IRType::Scalar(IRScalarType::Number) => Ok(8),
+            IRType::Scalar(IRScalarType::Point) => Ok(16),
             IRType::List(_) => bail!("Nested lists are not supported"),
         }
     }
@@ -58,14 +58,14 @@ impl CraneliftBuilder<'_, '_> {
     pub fn codegen_list_map(
         &mut self,
         lists: &[Vec<CraneliftList>],
-        output_ty: IRScalerType,
-        transform: impl Fn(&mut Self, &[CraneliftScaler]) -> Result<CraneliftScaler>,
+        output_ty: IRScalarType,
+        transform: impl Fn(&mut Self, Vec<CraneliftScalar>) -> Result<CraneliftScalar>,
     ) -> Result<CraneliftList> {
         let index_type = types::I64;
 
         let output_size = match output_ty {
-            IRScalerType::Number => 8,
-            IRScalerType::Point => 16,
+            IRScalarType::Number => 8,
+            IRScalarType::Point => 16,
         };
         let output_size_val = self.builder.ins().iconst(index_type, output_size);
 
@@ -114,8 +114,8 @@ impl CraneliftBuilder<'_, '_> {
         )?;
 
         Ok(match output_ty {
-            IRScalerType::Number => CraneliftList::Number(output_struct),
-            IRScalerType::Point => CraneliftList::Point(output_struct),
+            IRScalarType::Number => CraneliftList::Number(output_struct),
+            IRScalarType::Point => CraneliftList::Point(output_struct),
         })
     }
 
@@ -125,10 +125,10 @@ impl CraneliftBuilder<'_, '_> {
         depth: usize,
         index_slots: &[StackSlot],
         index_vals: &[Value],
-        output_ty: IRScalerType,
+        output_ty: IRScalarType,
         output_size_val: Value,
         output_ptr: Value,
-        transform: &impl Fn(&mut Self, &[CraneliftScaler]) -> Result<CraneliftScaler>,
+        transform: &impl Fn(&mut Self, Vec<CraneliftScalar>) -> Result<CraneliftScalar>,
     ) -> Result<()> {
         let index_type = types::I64;
 
@@ -180,26 +180,26 @@ impl CraneliftBuilder<'_, '_> {
             for (g, &idx) in lists.iter().zip(&index_vals) {
                 for list in g {
                     let (ptr, ty) = match list {
-                        CraneliftList::Number([_, ptr]) => (*ptr, IRScalerType::Number),
-                        CraneliftList::Point([_, ptr]) => (*ptr, IRScalerType::Point),
+                        CraneliftList::Number([_, ptr]) => (*ptr, IRScalarType::Number),
+                        CraneliftList::Point([_, ptr]) => (*ptr, IRScalarType::Point),
                     };
                     let field_size = match ty {
-                        IRScalerType::Number => 8,
-                        IRScalerType::Point => 16,
+                        IRScalarType::Number => 8,
+                        IRScalarType::Point => 16,
                     };
                     let field_size_val = self.builder.ins().iconst(index_type, field_size);
                     let offset = self.builder.ins().imul(idx, field_size_val);
                     let addr = self.builder.ins().iadd(ptr, offset);
 
                     let scalar = match ty {
-                        IRScalerType::Number => {
+                        IRScalarType::Number => {
                             let val = self
                                 .builder
                                 .ins()
                                 .load(types::F64, MemFlags::new(), addr, 0);
-                            CraneliftScaler::Number([val])
+                            CraneliftScalar::Number([val])
                         }
-                        IRScalerType::Point => {
+                        IRScalarType::Point => {
                             let x = self
                                 .builder
                                 .ins()
@@ -208,14 +208,14 @@ impl CraneliftBuilder<'_, '_> {
                                 .builder
                                 .ins()
                                 .load(types::F64, MemFlags::new(), addr, 8);
-                            CraneliftScaler::Point([x, y])
+                            CraneliftScalar::Point([x, y])
                         }
                     };
                     all_scalars.push(scalar);
                 }
             }
 
-            let result = transform(self, &all_scalars)?;
+            let result = transform(self, all_scalars)?;
 
             let mut index = None;
 
@@ -248,8 +248,8 @@ impl CraneliftBuilder<'_, '_> {
             let ptr = self.builder.ins().iadd(output_ptr, offset);
 
             let values = match result {
-                CraneliftScaler::Number([x]) => vec![x],
-                CraneliftScaler::Point([x, y]) => vec![x, y],
+                CraneliftScalar::Number([x]) => vec![x],
+                CraneliftScalar::Point([x, y]) => vec![x, y],
             };
 
             for (i, val) in values.into_iter().enumerate() {

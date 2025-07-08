@@ -1,7 +1,7 @@
 use cranelift_module::{FuncOrDataId, Module};
 
 use desmos_compiler::lang::codegen::{
-    ir::{IRScalerType, IRType},
+    ir::{IRScalarType, IRType},
     jit::{
         function::{ExplicitFn, ExplicitJitFn, ImplicitFn, ImplicitJitFn, JitValue, PointValue},
         ExecutionEngine,
@@ -30,21 +30,21 @@ impl ExecutionEngine for CraneliftBackend {
 
         unsafe {
             Some(match ty {
-                IRType::Scaler(IRScalerType::Number) => JitValue::Number(std::mem::transmute::<
+                IRType::Scalar(IRScalarType::Number) => JitValue::Number(std::mem::transmute::<
                     *const u8,
                     unsafe extern "C" fn() -> f64,
                 >(
                     self.module.get_finalized_function(func_id),
                 )()),
 
-                IRType::Scaler(IRScalerType::Point) => JitValue::Point(std::mem::transmute::<
+                IRType::Scalar(IRScalarType::Point) => JitValue::Point(std::mem::transmute::<
                     *const u8,
                     unsafe extern "C" fn() -> PointValue,
                 >(
                     self.module.get_finalized_function(func_id),
                 )()),
                 IRType::List(list_t) => match list_t {
-                    IRScalerType::Number => {
+                    IRScalarType::Number => {
                         JitValue::NumberList(convert_list(&std::mem::transmute::<
                             *const u8,
                             unsafe extern "C" fn() -> ListLayout,
@@ -52,7 +52,7 @@ impl ExecutionEngine for CraneliftBackend {
                             self.module.get_finalized_function(func_id),
                         )()))
                     }
-                    IRScalerType::Point => {
+                    IRScalarType::Point => {
                         JitValue::PointList(convert_list(&std::mem::transmute::<
                             *const u8,
                             unsafe extern "C" fn() -> ListLayout,
@@ -74,18 +74,18 @@ impl ExecutionEngine for CraneliftBackend {
 
         unsafe {
             Some(match ty {
-                IRType::Scaler(IRScalerType::Number) => ExplicitJitFn::Number(
+                IRType::Scalar(IRScalarType::Number) => ExplicitJitFn::Number(
                     ExplicitFnImpl::from_raw(self.module.get_finalized_function(func_id)),
                 ),
 
-                IRType::Scaler(IRScalerType::Point) => ExplicitJitFn::Point(
+                IRType::Scalar(IRScalarType::Point) => ExplicitJitFn::Point(
                     ExplicitFnImpl::from_raw(self.module.get_finalized_function(func_id)),
                 ),
                 IRType::List(list_t) => match list_t {
-                    IRScalerType::Number => ExplicitJitFn::NumberList(
+                    IRScalarType::Number => ExplicitJitFn::NumberList(
                         ExplicitListFnImpl::from_raw(self.module.get_finalized_function(func_id)),
                     ),
-                    IRScalerType::Point => ExplicitJitFn::PointList(ExplicitListFnImpl::from_raw(
+                    IRScalarType::Point => ExplicitJitFn::PointList(ExplicitListFnImpl::from_raw(
                         self.module.get_finalized_function(func_id),
                     )),
                 },
@@ -102,18 +102,18 @@ impl ExecutionEngine for CraneliftBackend {
 
         unsafe {
             Some(match ty {
-                IRType::Scaler(IRScalerType::Number) => ImplicitJitFn::Number(
+                IRType::Scalar(IRScalarType::Number) => ImplicitJitFn::Number(
                     ImplicitFnImpl::from_raw(self.module.get_finalized_function(func_id)),
                 ),
 
-                IRType::Scaler(IRScalerType::Point) => ImplicitJitFn::Point(
+                IRType::Scalar(IRScalarType::Point) => ImplicitJitFn::Point(
                     ImplicitFnImpl::from_raw(self.module.get_finalized_function(func_id)),
                 ),
                 IRType::List(list_t) => match list_t {
-                    IRScalerType::Number => ImplicitJitFn::NumberList(
+                    IRScalarType::Number => ImplicitJitFn::NumberList(
                         ImplicitListFnImpl::from_raw(self.module.get_finalized_function(func_id)),
                     ),
-                    IRScalerType::Point => ImplicitJitFn::PointList(ImplicitListFnImpl::from_raw(
+                    IRScalarType::Point => ImplicitJitFn::PointList(ImplicitListFnImpl::from_raw(
                         self.module.get_finalized_function(func_id),
                     )),
                 },
@@ -209,6 +209,8 @@ pub fn convert_list<T: Clone>(list_layout: &ListLayout) -> Vec<T> {
 
         // Compute the number of elements in the list
         let element_count = list_layout.size as usize;
+        println!("element_count: {}", element_count);
+        println!("list_layout.ptr: {:?}", list_layout.ptr);
 
         // Convert the raw pointer into a slice
         let slice = std::slice::from_raw_parts(list_layout.ptr as *const T, element_count);

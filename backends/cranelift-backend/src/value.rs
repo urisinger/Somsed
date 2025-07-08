@@ -1,24 +1,24 @@
 use cranelift::prelude::*;
-use desmos_compiler::lang::codegen::ir::{IRScalerType, IRType};
+use desmos_compiler::lang::codegen::ir::{IRScalarType, IRType};
 
 #[derive(Debug, Clone, Copy)]
 pub enum CraneliftValue {
-    Scaler(CraneliftScaler),
+    Scalar(CraneliftScalar),
     List(CraneliftList),
 }
 
 impl CraneliftValue {
     pub fn number(value: Value) -> Self {
-        Self::Scaler(CraneliftScaler::Number([value]))
+        Self::Scalar(CraneliftScalar::Number([value]))
     }
 
     pub fn point(value: [Value; 2]) -> Self {
-        Self::Scaler(CraneliftScaler::Point(value))
+        Self::Scalar(CraneliftScalar::Point(value))
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum CraneliftScaler {
+pub enum CraneliftScalar {
     Number([Value; 1]),
     Point([Value; 2]),
 }
@@ -30,10 +30,10 @@ pub enum CraneliftList {
 }
 
 impl CraneliftList {
-    pub fn element_type_and_size(&self) -> (IRScalerType, usize) {
+    pub fn element_type_and_size(&self) -> (IRScalarType, usize) {
         match self {
-            CraneliftList::Number(_) => (IRScalerType::Number, 8),
-            CraneliftList::Point(_) => (IRScalerType::Point, 16),
+            CraneliftList::Number(_) => (IRScalarType::Number, 8),
+            CraneliftList::Point(_) => (IRScalarType::Point, 16),
         }
     }
 
@@ -49,16 +49,16 @@ impl CraneliftValue {
     /// Construct from flat Cranelift values and expected IRType
     pub fn from_values(values: &[Value], ty: IRType) -> Option<Self> {
         Some(match ty {
-            IRType::Scaler(IRScalerType::Number) => {
-                CraneliftValue::Scaler(CraneliftScaler::Number(*as_array(values)?))
+            IRType::Scalar(IRScalarType::Number) => {
+                CraneliftValue::Scalar(CraneliftScalar::Number(*as_array(values)?))
             }
-            IRType::Scaler(IRScalerType::Point) => {
-                CraneliftValue::Scaler(CraneliftScaler::Point(*as_array(values)?))
+            IRType::Scalar(IRScalarType::Point) => {
+                CraneliftValue::Scalar(CraneliftScalar::Point(*as_array(values)?))
             }
-            IRType::List(IRScalerType::Number) => {
+            IRType::List(IRScalarType::Number) => {
                 CraneliftValue::List(CraneliftList::Number(*as_array(values)?))
             }
-            IRType::List(IRScalerType::Point) => {
+            IRType::List(IRScalarType::Point) => {
                 CraneliftValue::List(CraneliftList::Point(*as_array(values)?))
             }
         })
@@ -67,8 +67,8 @@ impl CraneliftValue {
     /// Get flat Cranelift values for passing to other instructions
     pub fn as_struct(&self) -> &[Value] {
         match self {
-            CraneliftValue::Scaler(CraneliftScaler::Number(v)) => v,
-            CraneliftValue::Scaler(CraneliftScaler::Point(v)) => v,
+            CraneliftValue::Scalar(CraneliftScalar::Number(v)) => v,
+            CraneliftValue::Scalar(CraneliftScalar::Point(v)) => v,
             CraneliftValue::List(CraneliftList::Number(v)) => v,
             CraneliftValue::List(CraneliftList::Point(v)) => v,
         }
@@ -76,14 +76,14 @@ impl CraneliftValue {
 
     pub fn ty(&self) -> IRType {
         match self {
-            CraneliftValue::Scaler(CraneliftScaler::Number(_)) => {
-                IRType::Scaler(IRScalerType::Number)
+            CraneliftValue::Scalar(CraneliftScalar::Number(_)) => {
+                IRType::Scalar(IRScalarType::Number)
             }
-            CraneliftValue::Scaler(CraneliftScaler::Point(_)) => {
-                IRType::Scaler(IRScalerType::Point)
+            CraneliftValue::Scalar(CraneliftScalar::Point(_)) => {
+                IRType::Scalar(IRScalarType::Point)
             }
-            CraneliftValue::List(CraneliftList::Number(_)) => IRType::List(IRScalerType::Number),
-            CraneliftValue::List(CraneliftList::Point(_)) => IRType::List(IRScalerType::Point),
+            CraneliftValue::List(CraneliftList::Number(_)) => IRType::List(IRScalarType::Number),
+            CraneliftValue::List(CraneliftList::Point(_)) => IRType::List(IRScalarType::Point),
         }
     }
 }
@@ -91,8 +91,8 @@ impl CraneliftValue {
 /// Number of Cranelift `Value`s required to represent an `IRType`
 pub fn value_count(ty: IRType) -> usize {
     match ty {
-        IRType::Scaler(IRScalerType::Number) => 1,
-        IRType::Scaler(IRScalerType::Point) => 2,
+        IRType::Scalar(IRScalarType::Number) => 1,
+        IRType::Scalar(IRScalarType::Point) => 2,
         IRType::List(_) => 2,
     }
 }

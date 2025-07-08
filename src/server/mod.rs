@@ -2,13 +2,14 @@ use crate::{ExpressionId, Expressions, Somsed};
 use anyhow::{anyhow, Context, Result};
 use cranelift_backend::CraneliftBackend;
 use desmos_compiler::lang::codegen::ir::IRType;
+use desmos_compiler::lang::codegen::ir_type::expr_ty;
 use desmos_compiler::lang::codegen::jit::function::{ExplicitFn, ExplicitJitFn, JitValue};
 use desmos_compiler::lang::codegen::jit::ExecutionEngine;
 use desmos_compiler::lang::codegen::IRGen;
-use desmos_compiler::lang::parser::ast::{Expression, ExpressionListEntry};
 use flume::r#async::RecvStream;
 use flume::RecvError;
 use iced::Vector;
+use parse::ast::ExpressionListEntry;
 use std::collections::{HashMap, HashSet};
 use std::thread;
 
@@ -153,7 +154,7 @@ pub fn points_server() -> RecvStream<'static, Event> {
                         types.insert("x".to_string(), IRType::NUMBER);
                         match backend.get_explicit_fn(
                             &format!("explicit_{}(f64)", id.0),
-                            &expr.ty(&expressions, &types)?,
+                            &expr_ty(expr, &expressions, &types)?,
                         ) {
                             Some(ExplicitJitFn::Number(lhs)) => {
                                 points_explicit(&|n: f64| lhs.call(n), range, mid, 9, 14)
@@ -172,7 +173,7 @@ pub fn points_server() -> RecvStream<'static, Event> {
                             backend
                                 .eval(
                                     &format!("{}()", name),
-                                    &value.ty(&expressions, &HashMap::new())?,
+                                    &expr_ty(value, &expressions, &HashMap::new())?,
                                 )
                                 .with_context(|| anyhow!("Const fn not found"))?,
                         ))

@@ -1,9 +1,7 @@
 use anyhow::{bail, Result};
 
-use crate::lang::{
-    codegen::ir::{IRScalerType, IRType},
-    parser::ast::BinaryOperator,
-};
+use crate::lang::codegen::ir::{IRScalarType, IRType};
+use parse::ast::BinaryOperator;
 
 use super::{
     ir::{BlockID, IRSegment, InstID, Instruction},
@@ -18,31 +16,31 @@ impl IRGen<'_> {
         op: BinaryOperator,
         rhs: InstID,
     ) -> Result<InstID> {
-        use IRScalerType::*;
+        use IRScalarType::*;
         use IRType::*;
 
         match (lhs.ty(), rhs.ty()) {
-            (Scaler(Number), Scaler(Number)) => {
+            (Scalar(Number), Scalar(Number)) => {
                 Self::codegen_binary_number_op(segment, current_block, lhs, op, rhs)
             }
 
-            (Scaler(Point), Scaler(Point)) => {
+            (Scalar(Point), Scalar(Point)) => {
                 Self::codegen_binary_point_op(segment, current_block, lhs, op, rhs)
             }
 
-            (Scaler(Number), Scaler(Point)) => {
+            (Scalar(Number), Scalar(Point)) => {
                 Self::codegen_number_point_op(segment, current_block, lhs, op, rhs)
             }
 
-            (Scaler(Point), Scaler(Number)) => {
+            (Scalar(Point), Scalar(Number)) => {
                 Self::codegen_point_number_op(segment, current_block, lhs, op, rhs)
             }
-            (List(list_t), Scaler(Number)) if op == BinaryOperator::Index => {
-                Ok(segment.push(current_block, Instruction::Index(lhs, rhs), Scaler(list_t)))
+            (List(list_t), Scalar(Number)) if op == BinaryOperator::Index => {
+                Ok(segment.push(current_block, Instruction::Index(lhs, rhs), Scalar(list_t)))
             }
 
             // Scalar-List or List-Scalar
-            (List(_), Scaler(_)) | (Scaler(_), List(_)) | (List(_), List(_)) => {
+            (List(_), Scalar(_)) | (Scalar(_), List(_)) | (List(_), List(_)) => {
                 Self::codegen_distributed_op(segment, current_block, lhs, op, rhs)
             }
         }
@@ -59,59 +57,72 @@ impl IRGen<'_> {
         let inner_block = segment.create_block();
 
         Ok(match (lhs.ty(), rhs.ty()) {
-            (List(lhs_ty), Scaler(rhs_ty)) => {
+            (List(lhs_ty), Scalar(rhs_ty)) => {
                 // List args come first
                 let lhs_inst = segment.push(
                     inner_block,
-                    Instruction::BlockArg { index: 0 },
-                    Scaler(lhs_ty),
+                    Instruction::BlockArg {
+                        index: 0,
+                        block: inner_block,
+                    },
+                    Scalar(lhs_ty),
                 );
 
                 let rhs_inst = segment.push(
                     inner_block,
-                    Instruction::BlockArg { index: 1 },
-                    Scaler(rhs_ty),
+                    Instruction::BlockArg {
+                        index: 1,
+                        block: inner_block,
+                    },
+                    Scalar(rhs_ty),
                 );
                 let ty =
                     Self::codegen_binary_op(segment, inner_block, lhs_inst, op, rhs_inst)?.ty();
 
                 let ty = match ty {
-                    Scaler(scaler) => List(scaler),
+                    Scalar(scalar) => List(scalar),
                     List(_) => bail!("Block incorrectly returns a list, this indicates a bug"),
                 };
+                //TODO: insert a with block here
                 segment.push(
                     current_block,
                     Instruction::Map {
                         lists: vec![vec![lhs]],
-                        args: vec![rhs],
                         block_id: inner_block,
                     },
                     ty,
                 )
             }
-            (Scaler(lhs_ty), List(rhs_ty)) => {
+            (Scalar(lhs_ty), List(rhs_ty)) => {
                 let lhs_inst = segment.push(
                     inner_block,
-                    Instruction::BlockArg { index: 1 },
-                    Scaler(lhs_ty),
+                    Instruction::BlockArg {
+                        index: 1,
+                        block: inner_block,
+                    },
+                    Scalar(lhs_ty),
                 );
                 // List args come first
                 let rhs_inst = segment.push(
                     inner_block,
-                    Instruction::BlockArg { index: 0 },
-                    Scaler(rhs_ty),
+                    Instruction::BlockArg {
+                        index: 0,
+                        block: inner_block,
+                    },
+                    Scalar(rhs_ty),
                 );
                 let ty =
                     Self::codegen_binary_op(segment, inner_block, lhs_inst, op, rhs_inst)?.ty();
                 let ty = match ty {
-                    Scaler(scaler) => List(scaler),
+                    Scalar(scalar) => List(scalar),
                     List(_) => bail!("Block incorrectly returns a list, this indicates a bug"),
                 };
+
+                //TODO: insert a with block here
                 segment.push(
                     current_block,
                     Instruction::Map {
                         lists: vec![vec![rhs]],
-                        args: vec![lhs],
                         block_id: inner_block,
                     },
                     ty,
@@ -121,34 +132,40 @@ impl IRGen<'_> {
                 // List args come first
                 let lhs_inst = segment.push(
                     inner_block,
-                    Instruction::BlockArg { index: 0 },
-                    Scaler(lhs_ty),
+                    Instruction::BlockArg {
+                        index: 0,
+                        block: inner_block,
+                    },
+                    Scalar(lhs_ty),
                 );
 
                 let rhs_inst = segment.push(
                     inner_block,
-                    Instruction::BlockArg { index: 1 },
-                    Scaler(rhs_ty),
+                    Instruction::BlockArg {
+                        index: 1,
+                        block: inner_block,
+                    },
+                    Scalar(rhs_ty),
                 );
                 let ty =
                     Self::codegen_binary_op(segment, inner_block, lhs_inst, op, rhs_inst)?.ty();
 
                 let ty = match ty {
-                    Scaler(scaler) => List(scaler),
+                    Scalar(scalar) => List(scalar),
                     List(_) => bail!("Block incorrectly returns a list, this indicates a bug"),
                 };
+
                 segment.push(
                     current_block,
                     Instruction::Map {
                         lists: vec![vec![lhs, rhs]],
-                        args: vec![],
                         block_id: inner_block,
                     },
                     ty,
                 )
             }
 
-            (Scaler(_), Scaler(_)) => bail!("cant distribute op on scalers"),
+            (Scalar(_), Scalar(_)) => bail!("cant distribute op on scalars"),
         })
     }
 
@@ -168,6 +185,7 @@ impl IRGen<'_> {
                 BinaryOperator::Mul => Instruction::Mul,
                 BinaryOperator::Div => Instruction::Div,
                 BinaryOperator::Pow => Instruction::Pow,
+                BinaryOperator::Point => Instruction::Point,
                 _ => todo!(),
             }(lhs, rhs),
             IRType::NUMBER,

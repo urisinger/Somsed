@@ -23,6 +23,15 @@ macro_rules! cranelift_sig {
         sig.returns.push(cranelift::codegen::ir::AbiParam::new(cranelift::codegen::ir::types::$ret));
         sig
     }};
+
+    ($module:expr, fn($($param:ident),*)) => {{
+        let module = $module;
+        let mut sig = module.make_signature();
+        $(
+            sig.params.push(cranelift::codegen::ir::AbiParam::new(cranelift::codegen::ir::types::$param));
+        )*
+        sig
+    }};
 }
 #[derive(Debug, Clone, Copy)]
 pub struct ImportedFunctions {
@@ -32,6 +41,8 @@ pub struct ImportedFunctions {
     pub cos_id: FuncId,
     pub sin_id: FuncId,
     pub tan_id: FuncId,
+
+    pub log_int: FuncId,
 }
 
 pub fn import_symbols(builder: &mut JITBuilder) {
@@ -41,6 +52,7 @@ pub fn import_symbols(builder: &mut JITBuilder) {
     builder.symbol("tan", tan as *const u8);
     builder.symbol("malloc", malloc as *const u8);
     builder.symbol("free", free as *const u8);
+    builder.symbol("log_int", log_int as *const u8);
 }
 
 impl ImportedFunctions {
@@ -71,6 +83,9 @@ impl ImportedFunctions {
         let cos_id = module.declare_function("cos", Linkage::Import, &trig_sig)?;
         let tan_id = module.declare_function("tan", Linkage::Import, &trig_sig)?;
 
+        let log_int_sig = cranelift_sig!(&module, fn(I64));
+        let log_int = module.declare_function("log_int", Linkage::Import, &log_int_sig)?;
+
         Ok(Self {
             malloc_id,
             free_id,
@@ -78,8 +93,13 @@ impl ImportedFunctions {
             sin_id,
             cos_id,
             tan_id,
+            log_int,
         })
     }
+}
+
+pub fn log_int(x: i64) {
+    println!("{}", x);
 }
 
 /// Allocate memory for `size` bytes and return a pointer to the allocated memory.
@@ -92,8 +112,10 @@ pub unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
 
     // Create a layout for the requested size
     let layout = Layout::from_size_align(size, 8).expect("Invalid layout");
+    println!("layout: {:?}", layout);
     // Allocate memory and return the pointer
     let ptr = alloc(layout);
+    println!("ptr: {:?}", ptr);
     if ptr.is_null() {
         panic!("Memory allocation failed");
     }

@@ -10,8 +10,8 @@ lazy_static = { workspace = true }
 pest = { workspace = true }
 pest_derive = { workspace = true }
 thiserror = { workspace = true }
+parse = {workspace = true}
 
-inkwell = { workspace = true }
 cranelift = { workspace = true }
 cranelift-jit = { workspace = true }
 cranelift-module = { workspace = true }

@@ -1,8 +1,9 @@
-use crate::lang::{codegen::IRSegment, parser::ast::UnaryOperator};
+use crate::lang::codegen::IRSegment;
 use anyhow::{bail, Result};
+use parse::ast::UnaryOperator;
 
 use super::{
-    ir::{BlockID, IRScalerType, IRType, InstID, Instruction},
+    ir::{BlockID, IRScalarType, IRType, InstID, Instruction},
     IRGen,
 };
 
@@ -14,10 +15,10 @@ impl IRGen<'_> {
         op: UnaryOperator,
     ) -> Result<InstID> {
         Ok(match lhs.ty() {
-            IRType::Scaler(IRScalerType::Number) => {
+            IRType::Scalar(IRScalarType::Number) => {
                 Self::codegen_unary_number_op(segment, current_block, lhs, op)?
             }
-            IRType::Scaler(IRScalerType::Point) => match op {
+            IRType::Scalar(IRScalarType::Point) => match op {
                 UnaryOperator::Neg => {
                     let x =
                         segment.push(current_block, Instruction::Extract(lhs, 0), IRType::NUMBER);
@@ -53,9 +54,6 @@ impl IRGen<'_> {
             match op {
                 UnaryOperator::Neg => Instruction::Neg,
                 UnaryOperator::Sqrt => Instruction::Sqrt,
-                UnaryOperator::Sin => Instruction::Sin,
-                UnaryOperator::Cos => Instruction::Cos,
-                UnaryOperator::Tan => Instruction::Tan,
                 _ => todo!(),
             }(lhs),
             IRType::NUMBER,
