@@ -14,3 +14,4 @@ anyhow = "1"
 
 [dev-dependencies]
 parse = {workspace = true}
+parse = {workspace = true}

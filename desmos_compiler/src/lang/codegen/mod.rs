@@ -20,7 +20,7 @@ pub struct IRGen<'a> {
     exprs: &'a Expressions,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Scope {
     types: HashMap<String, IRType>,
     args: HashMap<String, Instruction>,
@@ -132,7 +132,7 @@ impl<'a> IRGen<'a> {
                             .zip(args.iter().map(InstID::ty))
                             .collect();
 
-                        let ret = expr_ty(&body, self.exprs, &types)?;
+                        let ret = expr_ty(body, self.exprs, &types)?;
                         segment.push(
                             current_block,
                             Instruction::Call {
@@ -208,10 +208,11 @@ impl<'a> IRGen<'a> {
                 )
             }
 
+            SumProd { .. } => todo!(),
+
             Call { .. } => todo!(),
             ChainedComparison(_) => todo!(),
             Piecewise { .. } => todo!(),
-            SumProd { .. } => todo!(),
             ListRange { .. } => todo!(),
 
             With { .. } => todo!(),
@@ -234,7 +235,7 @@ impl<'a> IRGen<'a> {
             .context(anyhow!("Cannot find expr {name}"))?
         {
             ExpressionListEntry::Assignment { value, .. } => {
-                self.codegen_node(segment, scope, current_block, &value)
+                self.codegen_node(segment, scope, current_block, value)
             }
             _ => bail!("Expr is not of type VarDef"),
         }
@@ -274,7 +275,7 @@ impl<'a> IRGen<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn enqueue_with_dependencies<'b>(
+    fn collect_dependencies<'b>(
         expressions: &'b Expressions,
         errors: &mut HashMap<ExpressionId, String>,
         pending: &mut HashMap<SegmentKey, (ExpressionId, &'b Expression, &'b [String])>,
@@ -303,14 +304,14 @@ impl<'a> IRGen<'a> {
                             .zip(fn_args.iter().copied())
                             .collect();
                         let fn_key = SegmentKey::new(fn_name.clone(), fn_args.clone());
-                        Self::enqueue_with_dependencies(
+                        Self::collect_dependencies(
                             expressions,
                             errors,
                             pending,
                             expr_id,
-                            &body,
+                            body,
                             fn_key,
-                            &parameters,
+                            parameters,
                             &types,
                         );
                     }
@@ -351,7 +352,7 @@ impl<'a> IRGen<'a> {
                             format!("implicit_{}_{}", id.0, side),
                             vec![IRType::NUMBER, IRType::NUMBER],
                         );
-                        Self::enqueue_with_dependencies(
+                        Self::collect_dependencies(
                             expressions,
                             &mut errors,
                             &mut pending,
@@ -368,13 +369,14 @@ impl<'a> IRGen<'a> {
                     let mut types = HashMap::default();
 
                     types.insert("x".to_string(), IRType::NUMBER);
+
                     let key = SegmentKey::new(format!("explicit_{}", id.0), vec![IRType::NUMBER]);
-                    Self::enqueue_with_dependencies(
+                    Self::collect_dependencies(
                         expressions,
                         &mut errors,
                         &mut pending,
                         *id,
-                        &lhs,
+                        lhs,
                         key,
                         &explicit_args,
                         &types,
@@ -382,13 +384,25 @@ impl<'a> IRGen<'a> {
                 }
 
                 ExpressionListEntry::Assignment { name, value } => {
+                    /*
+                    let used_idents = value
+                        .used_identifiers(expressions)
+                        .expect("invalid state of expression");
+
+                    if used_idents
+                        .iter()
+                        .any(|ident| !expressions.idents.contains_key(ident))
+                    {
+                        continue;
+                    }
+                    */
                     let key = SegmentKey::new(name.to_string(), vec![]);
-                    Self::enqueue_with_dependencies(
+                    Self::collect_dependencies(
                         expressions,
                         &mut errors,
                         &mut pending,
                         *id,
-                        &value,
+                        value,
                         key,
                         &constant_args,
                         &HashMap::new(),

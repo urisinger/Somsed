@@ -91,6 +91,11 @@ pub enum Instruction {
     Extract(InstID, usize),
     Index(InstID, InstID),
 
+    With {
+        instr: InstID,
+        block: BlockID,
+    },
+
     Map {
         lists: Vec<Vec<InstID>>,
         block_id: BlockID,

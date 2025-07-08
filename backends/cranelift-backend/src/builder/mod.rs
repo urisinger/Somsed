@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use anyhow::{anyhow, bail, Context};
 use cranelift::prelude::*;
 use cranelift_module::{FuncOrDataId, Module};
@@ -313,6 +311,25 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                     )?))
                 }
 
+                Instruction::With { instr, block } => {
+                    let inner_block = segment
+                        .blocks()
+                        .get(block.0)
+                        .with_context(|| anyhow!("block does not exist"))?;
+
+                    let inner_args = [*values
+                        .get(instr.inst())
+                        .with_context(|| anyhow!("arg does not exist"))?];
+
+                    let new_args = block_args
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once(inner_args.as_slice()))
+                        .collect::<Vec<&[CraneliftValue]>>();
+
+                    self.build_block(segment, inner_block.insts(), &new_args)?
+                }
+
                 Instruction::Map { lists, block_id } => {
                     let inner_block = segment
                         .blocks()
@@ -347,7 +364,7 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
 
                                 let new_args = block_args
                                     .iter()
-                                    .map(|v| *v)
+                                    .copied()
                                     .chain(std::iter::once(inner_args.as_slice()))
                                     .collect::<Vec<&[CraneliftValue]>>();
                                 Ok(

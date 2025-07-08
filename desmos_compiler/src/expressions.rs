@@ -21,7 +21,7 @@ impl From<u32> for ExpressionId {
 #[derive(Debug, Default)]
 pub struct Expressions {
     pub exprs: HashMap<ExpressionId, ExpressionListEntry>,
-    idents: HashMap<String, ExpressionId>,
+    pub idents: HashMap<String, ExpressionId>,
 }
 
 impl Expressions {
