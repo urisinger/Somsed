@@ -58,6 +58,7 @@ impl IRGen<'_> {
 
         Ok(match (lhs.ty(), rhs.ty()) {
             (List(lhs_ty), Scalar(rhs_ty)) => {
+                let with_block = segment.create_block();
                 // List args come first
                 let lhs_inst = segment.push(
                     inner_block,
@@ -83,9 +84,17 @@ impl IRGen<'_> {
                     Scalar(scalar) => List(scalar),
                     List(_) => bail!("Block incorrectly returns a list, this indicates a bug"),
                 };
-                //TODO: insert a with block here
+
                 segment.push(
                     current_block,
+                    Instruction::With {
+                        instr: rhs,
+                        block: with_block,
+                    },
+                    ty,
+                );
+                segment.push(
+                    with_block,
                     Instruction::Map {
                         lists: vec![vec![lhs]],
                         block_id: inner_block,
@@ -94,6 +103,7 @@ impl IRGen<'_> {
                 )
             }
             (Scalar(lhs_ty), List(rhs_ty)) => {
+                let with_block = segment.create_block();
                 let lhs_inst = segment.push(
                     inner_block,
                     Instruction::BlockArg {
@@ -118,7 +128,14 @@ impl IRGen<'_> {
                     List(_) => bail!("Block incorrectly returns a list, this indicates a bug"),
                 };
 
-                //TODO: insert a with block here
+                segment.push(
+                    current_block,
+                    Instruction::With {
+                        instr: lhs,
+                        block: with_block,
+                    },
+                    ty,
+                );
                 segment.push(
                     current_block,
                     Instruction::Map {
