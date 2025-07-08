@@ -72,24 +72,17 @@ impl CraneliftBuilder<'_, '_> {
         let mut total_size: Option<Value> = None;
 
         for group in lists {
-            let mut group_size: Option<Value> = None;
-
-            for list in group {
-                let size = match list {
-                    CraneliftList::Number([size, _]) => *size,
-                    CraneliftList::Point([size, _]) => *size,
-                };
-
-                group_size = Some(match group_size {
-                    None => size,
-                    Some(acc) => {
-                        let lt = self.builder.ins().icmp(IntCC::SignedLessThan, acc, size);
-                        self.builder.ins().select(lt, acc, size)
-                    }
-                });
-            }
-
-            let group_size = group_size.context("empty list group")?;
+            let group_size = group
+                .iter()
+                .map(|list| match list {
+                    CraneliftList::Number([s, _]) => *s,
+                    CraneliftList::Point([s, _]) => *s,
+                })
+                .reduce(|a, b| {
+                    let lt = self.builder.ins().icmp(IntCC::SignedLessThan, a, b);
+                    self.builder.ins().select(lt, a, b)
+                })
+                .context("group is empty")?;
 
             total_size = Some(match total_size {
                 None => group_size,
@@ -175,6 +168,7 @@ impl CraneliftBuilder<'_, '_> {
         index_slots.push(index_slot);
         index_vals.push(index);
 
+        // If we reached the end of the lists, generate the body
         if depth + 1 == lists.len() {
             let mut all_scalars = Vec::new();
             for (g, &idx) in lists.iter().zip(&index_vals) {

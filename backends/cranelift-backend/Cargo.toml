@@ -11,3 +11,6 @@ cranelift-module = { workspace = true }
 
 desmos_compiler = {path = "../../desmos_compiler"}
 anyhow = "1"
+
+[dev-dependencies]
+parse = {workspace = true}
