@@ -210,7 +210,7 @@ pub fn convert_list<T: Clone>(list_layout: &ListLayout) -> Vec<T> {
         // Compute the number of elements in the list
         let element_count = list_layout.size as usize;
         println!("element_count: {}", element_count);
-        println!("list_layout.ptr: {:?}", list_layout.ptr);
+        println!("list_layout.ptr: {:x}", list_layout.ptr as usize);
 
         // Convert the raw pointer into a slice
         let slice = std::slice::from_raw_parts(list_layout.ptr as *const T, element_count);

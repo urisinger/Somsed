@@ -287,10 +287,23 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
                     .with_context(|| anyhow!("block arg not found"))?,
 
                 Instruction::NumberList(insts) => {
-                    CraneliftValue::List(CraneliftList::Number(self.build_new_list(
+                    let list = self.build_new_list(
                         &insts.iter().map(|i| values[i.inst()]).collect::<Vec<_>>(),
                         IRType::NUMBER,
-                    )?))
+                    )?;
+
+                    let log_fn = self
+                        .backend
+                        .module
+                        .declare_func_in_func(self.backend.functions.log_int, self.builder.func);
+
+                    self.builder.ins().call(log_fn, &[list[0]]);
+
+                    self.builder.ins().call(log_fn, &[list[1]]);
+
+                    let list = CraneliftValue::List(CraneliftList::Number(list));
+
+                    list
                 }
 
                 Instruction::PointList(insts) => {
@@ -363,27 +376,6 @@ impl<'a, 'ctx> CraneliftBuilder<'a, 'ctx> {
             .cloned()
             .ok_or_else(|| anyhow!("block did not produce any value"))
     }
-
-    /*fn number_list(&mut self, elements: &[Self::NumberValue]) -> Result<Self::NumberListValue> {
-
-    }
-
-    fn point_list(&mut self, elements: &[Self::PointValue]) -> Result<Self::PointListValue> {
-        self.build_new_list(elements, GenericValue::Point(()))
-    }
-
-    fn map_list(
-        &mut self,
-        list: GenericList<Self::NumberListValue, Self::PointListValue>,
-        output_ty: ListType,
-        f: impl Fn(
-            &mut Self,
-            GenericList<Self::NumberValue, Self::PointValue>,
-        ) -> GenericList<Self::NumberValue, Self::PointValue>,
-    ) -> GenericList<Self::NumberListValue, Self::PointListValue> {
-        self.codegen_list_map(&list, output_ty, f)
-            .expect("Something went wrong mapping list, this should not happen")
-    }*/
 
     fn pow(&mut self, lhs: Value, rhs: Value) -> Value {
         let func = self

@@ -290,9 +290,10 @@ impl CraneliftBuilder<'_, '_> {
             .module
             .declare_func_in_func(self.backend.functions.malloc_id, self.builder.func);
 
-        let raw_ptr = self.builder.ins().call(malloc_fn, &[size]);
+        let instr_ptr = self.builder.ins().call(malloc_fn, &[size]);
+        let raw_ptr = self.builder.inst_results(instr_ptr)[0];
 
-        self.builder.inst_results(raw_ptr)[0]
+        raw_ptr
     }
 
     fn codegen_free_list(&mut self, struct_value: &[Value; 2], size: usize) -> Result<()> {

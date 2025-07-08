@@ -99,7 +99,7 @@ impl ImportedFunctions {
 }
 
 pub fn log_int(x: i64) {
-    println!("{}", x);
+    println!("{:x}", x);
 }
 
 /// Allocate memory for `size` bytes and return a pointer to the allocated memory.
