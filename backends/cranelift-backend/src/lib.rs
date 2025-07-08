@@ -454,6 +454,11 @@ mod tests {
 
         test_implicit_list:{ "[1,2,3]=[x+1,y,x+y+1]", inputs = [0.0,2.0];}
 
+        test_wackscope: {
+            "c=x", inputs = [];
+            "y = c", inputs = [3.0, 3.0];
+        }
+
         test_square_function:{
             "s(z) = z^{2}", inputs = [];
             "s(x) + s(y) = 25", inputs = [3.0, 4.0];

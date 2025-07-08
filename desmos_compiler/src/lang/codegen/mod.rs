@@ -20,7 +20,7 @@ pub struct IRGen<'a> {
     exprs: &'a Expressions,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Scope {
     types: HashMap<String, IRType>,
     args: HashMap<String, Instruction>,
@@ -225,6 +225,7 @@ impl<'a> IRGen<'a> {
         current_block: BlockID,
         name: &str,
     ) -> Result<InstID> {
+        println!("{scope:?}");
         if let Some((inst, ty)) = scope.get(name) {
             return Ok(segment.push(current_block, inst.clone(), ty));
         }
@@ -368,6 +369,7 @@ impl<'a> IRGen<'a> {
                     let mut types = HashMap::default();
 
                     types.insert("x".to_string(), IRType::NUMBER);
+
                     let key = SegmentKey::new(format!("explicit_{}", id.0), vec![IRType::NUMBER]);
                     Self::enqueue_with_dependencies(
                         expressions,
@@ -382,6 +384,17 @@ impl<'a> IRGen<'a> {
                 }
 
                 ExpressionListEntry::Assignment { name, value } => {
+                    let used_idents = value
+                        .used_identifiers(expressions)
+                        .expect("invalid state of expression");
+
+                    if !used_idents
+                        .iter()
+                        .any(|ident| expressions.idents.contains_key(ident))
+                    {
+                        continue;
+                    }
+
                     let key = SegmentKey::new(name.to_string(), vec![]);
                     Self::enqueue_with_dependencies(
                         expressions,
